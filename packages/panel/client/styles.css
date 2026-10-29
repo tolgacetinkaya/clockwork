@@ -2383,3 +2383,8 @@ textarea::placeholder {
 
 .crew-mission small { font-size: 10px; color: #737c70; font-weight: 400; }
 .crew-review-outcome { color: #52664f; font-size: 12px; }
+
+.crew-member .crew-mission { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; gap: 4px 8px; }
+.crew-mission-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; }
+.crew-member .crew-mission > small { grid-column: 1; }
+.crew-member .crew-mission > svg { grid-column: 2; grid-row: 1; align-self: start; margin-top: 5px; }

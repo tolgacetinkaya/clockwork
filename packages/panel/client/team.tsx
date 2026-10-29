@@ -36,7 +36,7 @@ export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
             const reviewOutcome = role === "Final review" ? finalReviewOutcome(snapshot, agent.id) : null;
             return <article className="crew-member" key={agent.id}>
               <header className="crew-member-header"><Avatar name={role} index={index} small /><span className="crew-role">{role}</span>{flag ? <span className="small-muted">{flag}</span> : <Status value={agent.status} />}</header>
-              {role === "Final review" ? <h4>Whole-project review</h4> : shownUnits.length ? shownUnits.map((id) => <button className="crew-mission" key={id} onClick={() => select(id)}>{snapshot.spec?.units.find((unit) => unit.id === id)?.description ?? unitTitle(snapshot, id)} <small>{id}</small><ArrowUpRight size={12} /></button>) : <p>{agent.purpose ?? "Awaiting a recorded task"}</p>}
+              {role === "Final review" ? <h4>Whole-project review</h4> : shownUnits.length ? shownUnits.map((id) => <button className="crew-mission" key={id} onClick={() => select(id)}><span className="crew-mission-description">{snapshot.spec?.units.find((unit) => unit.id === id)?.description ?? unitTitle(snapshot, id)}</span><small>{id}</small><ArrowUpRight size={12} /></button>) : <p>{agent.purpose ?? "Awaiting a recorded task"}</p>}
               {reviewOutcome ? <p className="crew-review-outcome">{reviewOutcome}</p> : null}
               {missions.map((id) => <p className="small-muted" key={id}>{unitActivity(snapshot, id)?.readiness}</p>)}
               {role === "Final review" ? <p className="small-muted">Independent acceptance checks over the combined integration workspace.</p> : null}
