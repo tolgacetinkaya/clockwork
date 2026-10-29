@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 
 // Inspect both tracked files and files a normal `git add` would include.
 const paths = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' }).split('\0').filter(Boolean))];
@@ -14,6 +14,7 @@ const fixtureFiles = new Set([
 const fakeToken = /^(?:sk-(?:[abzy]{24}|[12]{22}|abcdefghijklmnopqrstuvwx|abcdefghijklmnop1234)|ghp_abcdefghijklmnopqrs[t]1234|AKIAIOSFODNN7E[X]AMPLE)$/;
 const findings = [];
 for (const path of paths) {
+  if (!existsSync(path)) continue; // A normal git add removes deleted tracked files.
   if (path !== '.env.example' && forbidden.test(path)) { findings.push(`${path}: private/generated path must not be committed`); continue; }
   const entry = lstatSync(path);
   if (!entry.isFile()) { findings.push(`${path}: only regular source files may be published`); continue; }

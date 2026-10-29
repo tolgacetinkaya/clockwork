@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
 
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.json ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/panel/package.json packages/panel/package.json
 COPY packages/cli/package.json packages/cli/package.json
@@ -10,6 +10,7 @@ RUN npm ci --no-audit --no-fund
 
 COPY packages/ ./packages/
 COPY docker/ ./docker/
+RUN npm run build
 RUN mkdir -p /data/.teamsmith && chown -R node:node /data
 
 ENV NODE_ENV=production

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- React 19 / Tailwind panel with task, agent, activity, and decision views.
+- Shared SSE snapshots with reconnect recovery, TanStack Query state, and Zustand UI state.
+- Live controls and durable operator requests, plus CLI-to-browser transport tests.
+
 - Initial public source import of the Clockwork prototype.
 - Task specifications, event ledger, budget tracking, command queue, and Claude adapter.
 - Local panel with an optional Docker demo using reviewed historical fixtures.
