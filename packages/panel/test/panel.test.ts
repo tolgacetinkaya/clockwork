@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -163,6 +163,25 @@ describe("panel", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it.each(["{", "null", "[]", '{"paused":false,"kill":"true"}'])(
+    "fails HTTP control reads and writes without overwriting corrupt data: %s",
+    async (raw) => {
+      const path = join(dir, ".teamsmith", "control.json");
+      await writeFile(path, raw);
+      expect((await fetch(`${handle.url}/api/control`)).status).toBe(500);
+      const res = await fetch(`${handle.url}/api/control`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paused: true }),
+      });
+      expect(res.status).toBe(500);
+      expect(await readFile(path, "utf8")).toBe(raw);
+      const snapshotRes = await fetch(`${handle.url}/api/snapshot`);
+      expect(snapshotRes.status).toBe(200);
+      const snapshot = await snapshotRes.json();
+      expect(JSON.stringify(snapshot)).toContain("Control file is unreadable or corrupt");
+    },
+  );
 
   it("404s unknown routes", async () => {
     const res = await fetch(`${handle.url}/nope`);

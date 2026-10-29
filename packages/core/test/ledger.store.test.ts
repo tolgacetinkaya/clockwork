@@ -95,6 +95,19 @@ describe("ledger store", () => {
     await expect(LedgerWriter.open(file, { clock })).rejects.toThrow(/corrupted ledger/);
   });
 
+  it("scrubs credential property keys from persisted and returned events", async () => {
+    const secret = "ghp_abcdefghijklmnopqrst1234";
+    const writer = await LedgerWriter.open(file, { clock });
+    await writer.append("run.started", { data: { run_id: "redaction-keys" } });
+    const event = await writer.append("interaction.answers_received", {
+      data: { nested: [{ [secret]: { value: secret } }] },
+    });
+    expect(JSON.stringify(event)).not.toContain(secret);
+    const raw = await readFile(file, "utf8");
+    expect(raw).not.toContain(secret);
+    expect(raw).toContain(REDACTED);
+  });
+
   it("redacts secrets in event data before they reach disk", async () => {
     const redactor = new Redactor();
     redactor.registerSecret("hunter2-super-secret");
@@ -135,6 +148,23 @@ describe("Redactor", () => {
     r.registerSecret("s3cr3t-value");
     const value = { a: ["contains s3cr3t-value here"], b: { c: "s3cr3t-value" }, n: 42 };
     expect(r.redactValue(value)).toEqual({ a: [`contains ${REDACTED} here`], b: { c: REDACTED }, n: 42 });
+  });
+
+  it("scrubs nested keys while preserving colliding entries and safe prototype-named keys", () => {
+    const r = new Redactor();
+    r.registerSecret("private-value");
+    const input = JSON.parse('{"__proto__":{"safe":"ok"},"constructor":"kept","nested":[{"private-value":1,"sk-abcdefghijklmnop1234":2,"[REDACTED]":3,"[REDACTED] (2)":4}]}');
+    const output = r.redactValue(input);
+    expect(Object.getPrototypeOf(output)).toBe(Object.prototype);
+    expect(Object.hasOwn(output, "__proto__")).toBe(true);
+    expect(output.__proto__).toEqual({ safe: "ok" });
+    expect(output.constructor).toBe("kept");
+    expect(output.nested[0]).toEqual({
+      "[REDACTED] (3)": 1, "[REDACTED] (4)": 2, "[REDACTED]": 3, "[REDACTED] (2)": 4,
+    });
+    expect(JSON.stringify(output)).not.toContain("private-value");
+    expect(JSON.stringify(output)).not.toContain("sk-abcdefghijklmnop1234");
+    expect(input.nested[0]["private-value"]).toBe(1);
   });
 
   it("ignores registration of trivially short strings", () => {

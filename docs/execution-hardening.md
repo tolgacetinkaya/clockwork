@@ -94,3 +94,30 @@ These are per-file guarantees. A spec-file write and its amendment ledger event
 are not one crash-atomic transaction. CLI preflights amendment admission before
 writing a new spec, but recovery across a crash between those writes remains
 future work.
+
+## Local state safeguards
+
+Worker workspace admission compares resolved path components. A worker may not
+be the control directory or contain it, including control directory names that
+start with two dots. This check does not replace the execution sandbox or the
+ownership checks described above.
+
+Panel control updates preserve omitted flags only after reading a valid control
+file with boolean `paused` and `kill` fields. Only a missing file is treated as
+uninitialized. Corrupt or unreadable files reject updates and remain untouched;
+the panel snapshot reports a diagnostic instead of silently clearing a stop.
+
+New commands containing recognized credential formats are rejected before they
+are appended, with a generic error that does not repeat the credential. This
+includes nested values and property names. Accepted command content is not
+silently redacted or otherwise rewritten. Programmatic queue callers may supply
+a `Redactor` with registered secret literals in addition to the built-in formats.
+Ledger redaction also covers property names, preserving colliding entries under
+distinct redacted names.
+
+Secret detection is defense in depth, not a secret-storage mechanism: arbitrary
+passwords and unrecognized formats are not guaranteed to be detected. Supply
+credentials through the provider's authentication/configuration mechanism, not
+operator answers or notes. Existing queue and ledger records are not rewritten
+by these safeguards. Acknowledgment advances the queue cursor; it does not erase
+old records. Previously stored credentials need separate review and rotation.

@@ -114,6 +114,24 @@ describe("panel command channel", () => {
     expect(body.error).toBeTruthy();
   });
 
+  it("rejects detected credentials without echoing or persisting them and keeps the queue usable", async () => {
+    const secret = "sk-abcdefghijklmnop1234";
+    const send = (text: string) => fetch(`${handle.url}/api/commands`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "answer_questions", data: { text } }),
+    });
+    const rejected = await send(`use ${secret}`);
+    expect(rejected.status).toBe(400);
+    expect(await rejected.text()).not.toContain(secret);
+    await expect(readFile(join(dir, ".teamsmith", "commands.jsonl"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    const accepted = await send("Use OAuth.");
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({ seq: 1, data: { text: "Use OAuth." } });
+    const onDisk = await readFile(join(dir, ".teamsmith", "commands.jsonl"), "utf8");
+    expect(onDisk).not.toContain(secret);
+    expect(onDisk.trim().split("\n")).toHaveLength(1);
+  });
+
   it("rejects malformed command data with 400", async () => {
     const res = await fetch(`${handle.url}/api/commands`, {
       method: "POST",

@@ -40,7 +40,7 @@ export class Redactor {
     return out;
   }
 
-  /** Deep-redacts every string in a JSON-serializable value. */
+  /** Deep-redacts every string and property key in a JSON-serializable value. */
   redactValue<T>(value: T): T {
     if (typeof value === "string") {
       return this.redactText(value) as T;
@@ -50,8 +50,21 @@ export class Redactor {
     }
     if (typeof value === "object" && value !== null) {
       const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(value)) {
-        out[k] = this.redactValue(v);
+      const entries = Object.entries(value);
+      // Reserve original safe keys so redacted keys cannot overwrite them.
+      const used = new Set(entries.map(([key]) => key).filter(key => this.redactText(key) === key));
+      for (const [k, v] of entries) {
+        const base = this.redactText(k);
+        let key = base;
+        if (base !== k) {
+          let suffix = 2;
+          while (used.has(key)) key = `${base} (${suffix++})`;
+          used.add(key);
+        }
+        // Assignment to __proto__ would invoke the inherited prototype setter.
+        Object.defineProperty(out, key, {
+          value: this.redactValue(v), enumerable: true, writable: true, configurable: true,
+        });
       }
       return out as T;
     }
