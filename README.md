@@ -44,7 +44,7 @@ npm run -s clockwork -- status
 For a target project, initialize state using the source CLI:
 
 ```sh
-node --import /absolute/path/to/clockwork/node_modules/tsx/dist/loader.mjs /absolute/path/to/clockwork/packages/cli/src/bin.ts init
+node "/absolute/path/to/clockwork/node_modules/tsx/dist/cli.mjs" "/absolute/path/to/clockwork/packages/cli/src/bin.ts" init
 ```
 
 Replace both absolute paths with your checkout location and run from the target
