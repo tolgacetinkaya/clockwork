@@ -1,12 +1,12 @@
 # Golden paths
 
-Internal regression scenarios for clockwork development â€” users never see these. Run whenever the core changes.
+Internal regression scenarios for clockwork development — users never see these. Run whenever the core changes.
 
-- **GP-1** (with playbook): small URL shortener web app â€” parallel + sequential units, real contracts, objectively measurable acceptance.
-- **GP-2** (without playbook): small CLI tool or Claude Code skill â€” tests the no-playbook fallback and draft-playbook generation.
-- **GP-3** (later): brownfield â€” adding a feature to an existing project.
+- **GP-1** (with playbook): small URL shortener web app — parallel + sequential units, real contracts, objectively measurable acceptance.
+- **GP-2** (without playbook): small CLI tool or Claude Code skill — tests the no-playbook fallback and draft-playbook generation.
+- **GP-3** (later): brownfield — adding a feature to an existing project.
 
-Pass definition: all acceptance criteria + human interventions â‰¤ N + budget deviation â‰¤ X% + repeatability (â‰¥2 of 3 runs). Thresholds are calibrated during the first runs (M6).
+Pass definition: all acceptance criteria + human interventions ≤ N + budget deviation ≤ X% + repeatability (≥2 of 3 runs). Thresholds are calibrated during the first runs (M6).
 
 ## Public-checkout evidence
 

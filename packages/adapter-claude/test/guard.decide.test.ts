@@ -196,7 +196,7 @@ describe("matchScope", () => {
     expect(matchScope("public/*.css", "public/site.css")).toBe(true);
     expect(matchScope("public/*.css", "public/nested/site.css")).toBe(false);
     expect(matchScope("README.md", "README.md")).toBe(true);
-    expect(matchScope("README.md", "readme.md")).toBe(true); // case-insensitive
+    expect(matchScope("README.md", "readme.md")).toBe(process.platform === "win32"); // POSIX scopes preserve case
     expect(matchScope("README.md", "README.md.bak")).toBe(false);
   });
 });
