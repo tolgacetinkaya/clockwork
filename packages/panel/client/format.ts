@@ -1,21 +1,22 @@
+import { getLocale, intlLocale, t } from "./i18n.js";
 import type { LedgerEvent, UnitState } from "@clockwork/core";
 import type { PanelSnapshot } from "../src/protocol.js";
 import type { Filter } from "./state.js";
 
 export const compact = (value: number) =>
-  new Intl.NumberFormat("en", {
+  new Intl.NumberFormat(intlLocale[getLocale()], {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
 export const number = (value: number) =>
-  new Intl.NumberFormat("en").format(value);
+  new Intl.NumberFormat(intlLocale[getLocale()]).format(value);
 export const title = (value: string) =>
   value
     .replace(/^wu-/, "")
     .replace(/[-_.]/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 export const time = (value: string) =>
-  new Date(value).toLocaleTimeString("en", {
+  new Date(value).toLocaleTimeString(intlLocale[getLocale()], {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -37,7 +38,7 @@ export function matchesFilter(unit: UnitState, filter: Filter): boolean {
 export function eventTitle(event: LedgerEvent): string {
   const names: Partial<Record<LedgerEvent["type"], string>> = {
     "run.started": "Run created",
-    "run.phase_entered": `Entered ${String(event.data?.phase ?? "next phase")}`,
+    "run.phase_entered": t("Entered {phase}", { phase: String(event.data?.phase ?? t("next phase")) }),
     "run.paused": "Run paused",
     "run.resumed": "Run resumed",
     "run.completed": "Run completed",
@@ -63,5 +64,5 @@ export function eventTitle(event: LedgerEvent): string {
     "budget.exhausted": "Budget limit reached",
     "escalation.step": "Escalation recorded",
   };
-  return names[event.type] ?? title(event.type);
+  return names[event.type] ? t(names[event.type]!) : title(event.type);
 }

@@ -1,3 +1,4 @@
+import { t, useI18n } from "./i18n.js";
 import { Search, ArrowUpRight, GitBranch, Check, Layers } from "lucide-react";
 import type { PanelSnapshot } from "../src/protocol.js";
 import { usePanelUI } from "./state.js";
@@ -7,23 +8,22 @@ import { UnitActivity } from "./unit-activity.js";
 import { Avatar, Status, Empty } from "./ui.js";
 
 export function WorkList({ snapshot }: { snapshot: PanelSnapshot }) {
+  useI18n();
   const select = usePanelUI((s) => s.selectUnit);
   const units = Object.entries(snapshot.state.units);
   if (!units.length)
     return (
-      <Empty title="A clear workbench">
-        Work units will appear after a team specification is recorded.
-      </Empty>
+      <Empty title={t("A clear workbench")}>{t("Work units will appear after a team specification is recorded.")}</Empty>
     );
   return (
     <div className="table-scroll">
       <table className="work-table">
         <thead>
           <tr>
-            <th>Work unit</th>
-            <th>Agent</th>
-            <th>Status</th>
-            <th className="text-right">Tokens</th>
+            <th>{t("Work unit")}</th>
+            <th>{t("Agent")}</th>
+            <th>{t("Status")}</th>
+            <th className="text-right">{t("Tokens")}</th>
           </tr>
         </thead>
         <tbody>
@@ -53,7 +53,7 @@ export function WorkList({ snapshot }: { snapshot: PanelSnapshot }) {
                     <span>{title(unit.agent)}</span>
                   </span>
                 ) : (
-                  <span className="muted">Unassigned</span>
+                  <span className="muted">{t("Unassigned")}</span>
                 )}
               </td>
               <td>
@@ -79,6 +79,7 @@ export function PageHeading({
   title: string;
   subtitle: string;
 }) {
+  useI18n();
   return (
     <header className="page-heading">
       <p className="eyebrow">{eyebrow}</p>
@@ -114,6 +115,7 @@ const columns = [
   },
 ];
 export function Workboard({ snapshot }: { snapshot: PanelSnapshot }) {
+  useI18n();
   const filter = usePanelUI((s) => s.filter),
     search = usePanelUI((s) => s.search),
     select = usePanelUI((s) => s.selectUnit);
@@ -128,21 +130,21 @@ export function Workboard({ snapshot }: { snapshot: PanelSnapshot }) {
         .includes(search.toLowerCase()),
   );
   const filters: [Filter, string][] = [
-    ["all", "All work"],
-    ["active", "Active"],
-    ["waiting", "Waiting"],
-    ["accepted", "Accepted"],
-    ["attention", "Needs attention"],
+    ["all", t("All work")],
+    ["active", t("Active")],
+    ["waiting", t("Waiting")],
+    ["accepted", t("Accepted")],
+    ["attention", t("Needs attention")],
   ];
   return (
     <>
       <PageHeading
-        eyebrow="THE WORKBOARD"
-        title="A place for every moving part."
-        subtitle="Follow dependencies, execution, and verification without losing the thread."
+        eyebrow={t("THE WORKBOARD")}
+        title={t("A place for every moving part.")}
+        subtitle={t("Follow dependencies, execution, and verification without losing the thread.")}
       />
       <div className="filter-bar">
-        <div className="filter-tabs" aria-label="Filter work units">
+        <div className="filter-tabs" aria-label={t("Filter work units")}>
           {filters.map(([value, label]) => (
             <button
               key={value}
@@ -158,8 +160,8 @@ export function Workboard({ snapshot }: { snapshot: PanelSnapshot }) {
         <label className="search-field">
           <Search size={15} />
           <input
-            aria-label="Search work units"
-            placeholder="Find a work unit…"
+            aria-label={t("Search work units")}
+            placeholder={t("Find a work unit…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -177,10 +179,10 @@ export function Workboard({ snapshot }: { snapshot: PanelSnapshot }) {
             >
               <header>
                 <span className="column-dot" />
-                <h2>{column.label}</h2>
+                <h2>{t(column.label)}</h2>
                 <span>{units.length}</span>
               </header>
-              <p className="column-hint">{column.hint}</p>
+              <p className="column-hint">{t(column.hint)}</p>
               <div className="board-stack">
                 {units.map(([id, unit], index) => (
                   <button
@@ -202,22 +204,19 @@ export function Workboard({ snapshot }: { snapshot: PanelSnapshot }) {
                           <span>{title(unit.agent)}</span>
                         </span>
                       ) : (
-                        <span className="small-muted">Awaiting assignment</span>
+                        <span className="small-muted">{t("Awaiting assignment")}</span>
                       )}
                       <span>{unit.spent ? compact(unit.spent) : "—"}</span>
                     </div>
                     {unit.dependsOn.length ? (
                       <p className="task-dependency">
                         <GitBranch size={12} />
-                        {unit.dependsOn.length} dependencies
-                      </p>
+                        {t("{count} dependencies", { count: unit.dependsOn.length })}</p>
                     ) : null}
                   </button>
                 ))}
                 {!units.length ? (
-                  <div className="board-empty">
-                    Nothing here right now
-                    <span>New activity will update this column.</span>
+                  <div className="board-empty">{t("Nothing here right now")}{" "}<span>{t("New activity will update this column.")}</span>
                   </div>
                 ) : null}
               </div>

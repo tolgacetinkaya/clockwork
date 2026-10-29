@@ -1,3 +1,4 @@
+import { t, initializeLocale } from "./i18n.js";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,6 +7,8 @@ import "@fontsource-variable/newsreader";
 import "@fontsource-variable/newsreader/wght-italic.css";
 import "./styles.css";
 import { App } from "./App.js";
+
+initializeLocale();
 
 const cache = new QueryClient({
   defaultOptions: {
@@ -24,14 +27,15 @@ class PanelBoundary extends React.Component<
   override render() {
     return this.state.failed ? (
       <main className="fatal-state">
-        <h1>The workspace could not render.</h1>
-        <p>Your project files are unchanged. Reload to reconnect.</p>
+        <h1>{t("The workspace could not render.")}</h1>
+        <p>{t("Your project files are unchanged. Reload to reconnect.")}
+            </p>
         <button
           className="primary-button"
           onClick={() => window.location.reload()}
         >
-          Reload workspace
-        </button>
+          {t("Reload workspace")}
+            </button>
       </main>
     ) : (
       this.props.children
