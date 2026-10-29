@@ -9,7 +9,9 @@
     "@clockwork/adapter-claude": "*",
     "@clockwork/core": "*",
     "@clockwork/panel": "*",
-    "yaml": "^2.6.0"
+    "yaml": "^2.6.0",
+    "@clockwork/adapter-codex": "*",
+    "@clockwork/runner": "*"
   },
   "license": "MIT",
   "repository": {

@@ -100,16 +100,24 @@ export async function readPanelData(
     if (!event.agent_id) continue;
     const agent = ensure(event.agent_id);
     agent.lastEventAt = event.ts;
+    if (event.unit_id && !agent.units.includes(event.unit_id))
+      agent.units.push(event.unit_id);
     if (event.type === "agent.completed") agent.status = "completed";
     if (event.type === "agent.error") agent.status = "attention";
-    if (event.type === "agent.spawned" || event.type === "unit.started")
-      agent.status = "idle";
+    if (event.type === "unit.started") agent.status = "idle";
+    if (event.type === "agent.spawned")
+      agent.status =
+        event.data?.mode === "verify"
+          ? "verifying"
+          : event.data?.mode === "produce"
+            ? "working"
+            : "idle";
   }
   for (const [id, unit] of Object.entries(state.units)) {
     const assigned = unit.agent ?? assignments[id];
     if (!assigned) continue;
     const agent = ensure(assigned);
-    agent.units.push(id);
+    if (!agent.units.includes(id)) agent.units.push(id);
     if (agent.status === "attention" || agent.status === "completed") continue;
     if (unit.status === "running" || unit.status === "rework")
       agent.status = "working";

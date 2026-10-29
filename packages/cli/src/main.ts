@@ -1,10 +1,10 @@
 /**
- * clockwork CLI — the orchestrator's hands.
+ * clockwork CLI â€” the orchestrator's hands.
  *
  * The PreToolUse guard denies write-tool access to `.teamsmith/**` for
  * everyone (ledger integrity); the orchestrator maintains ledger, specs,
  * guard, and control files exclusively through this CLI. Commands are thin
- * wrappers over @clockwork/core — no business logic lives here.
+ * wrappers over @clockwork/core â€” no business logic lives here.
  */
 
 import { exec } from "node:child_process";
@@ -17,6 +17,9 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 import YAML from "yaml";
 import {
+  buildAgentDefinition,
+  buildUnitPrompt,
+  buildVerifierPrompt,
   EVENT_TYPES,
   acknowledgeCommands,
   LedgerWriter,
@@ -58,12 +61,11 @@ import {
 } from "@clockwork/core";
 import type { EventType, LedgerEvent, RunState, Spec } from "@clockwork/core";
 import {
-  buildAgentDefinition,
-  buildUnitPrompt,
-  buildVerifierPrompt,
   validConfig,
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
+import { CodexAdapter } from "@clockwork/adapter-codex";
+import { runUnit } from "@clockwork/runner";
 
 const TS_DIR = ".teamsmith";
 const LEDGER = "ledger.jsonl";
@@ -124,7 +126,7 @@ async function deriveState(cwd: string): Promise<{ state: RunState; events: Ledg
 
 async function latestSpec(cwd: string): Promise<Spec> {
   const loaded = await loadLatestSpec(join(cwd, TS_DIR));
-  if (!loaded) throw new Error("no spec found — run `clockwork spec save` first");
+  if (!loaded) throw new Error("no spec found â€” run `clockwork spec save` first");
   if (!loaded.spec) {
     throw new Error(
       `latest spec is invalid: ${loaded.issues.map((i) => i.message).join("; ")}`,
@@ -154,7 +156,7 @@ async function cmdEvent(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const type = args.positional[0];
   if (!type || !isEventType(type)) {
     return fail(
-      `${type ? `unknown event type: "${type}" — the dictionary is closed.` : "usage: clockwork event <type> [--actor a --unit u --agent g --data '{...}']"}\nvalid types:\n${EVENT_TYPES.map((t) => `  ${t}`).join("\n")}`,
+      `${type ? `unknown event type: "${type}" â€” the dictionary is closed.` : "usage: clockwork event <type> [--actor a --unit u --agent g --data '{...}']"}\nvalid types:\n${EVENT_TYPES.map((t) => `  ${t}`).join("\n")}`,
     );
   }
 
@@ -216,7 +218,7 @@ async function cmdStatus(cwd: string): Promise<CliResult> {
 async function cmdChangelog(cwd: string): Promise<CliResult> {
   const { events } = await deriveState(cwd);
   if (events.length === 0) {
-    return fail(`no ledger events found under ${join(cwd, TS_DIR, LEDGER)} — wrong directory?`);
+    return fail(`no ledger events found under ${join(cwd, TS_DIR, LEDGER)} â€” wrong directory?`);
   }
   return ok(renderChangelog(events));
 }
@@ -358,7 +360,7 @@ async function cmdRetro(cwd: string, args: ParsedArgs): Promise<CliResult> {
 
   const filePath = await writeRetroRecord(join(cwd, TS_DIR, "retro"), record);
 
-  // Mirror to the user-scope store so experience accumulates ACROSS projects —
+  // Mirror to the user-scope store so experience accumulates ACROSS projects â€”
   // recall in a fresh workspace would otherwise start cold every time.
   try {
     await writeRetroRecord(join(homedir(), ".teamsmith", "retro"), record);
@@ -371,14 +373,15 @@ async function cmdRetro(cwd: string, args: ParsedArgs): Promise<CliResult> {
 async function cmdPrompt(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const [kind, id] = args.positional;
   if (!kind || !id) return fail("usage: clockwork prompt <unit|verify|agentdef> <id>");
+  if (args.flags.adapter !== undefined && !["claude", "codex"].includes(args.flags.adapter)) return fail("unknown adapter (expected claude or codex)");
   const spec = await latestSpec(cwd);
   switch (kind) {
     case "unit":
-      return ok(buildUnitPrompt(spec, id));
+      return ok(buildUnitPrompt(spec, id, args.flags.adapter === "codex" ? "workspace" : "hook"));
     case "verify":
       return ok(buildVerifierPrompt(spec, id));
     case "agentdef":
-      return ok(buildAgentDefinition(spec, id));
+      return ok(buildAgentDefinition(spec, id, args.flags.adapter === "codex" ? "workspace" : "hook"));
     default:
       return fail(`unknown prompt kind: ${kind}`);
   }
@@ -420,7 +423,7 @@ async function cmdRecall(cwd: string, args: ParsedArgs): Promise<CliResult> {
     }
   }
   if (prior.estimation_calibration.length) {
-    lines.push("", "| unit | samples | mean est→actual | deviation |", "|---|---:|---:|---:|");
+    lines.push("", "| unit | samples | mean estâ†’actual | deviation |", "|---|---:|---:|---:|");
     for (const c of prior.estimation_calibration) {
       lines.push(`| ${c.unit} | ${c.samples} | x${c.mean_ratio.toFixed(2)} | ${c.deviation_pct > 0 ? "+" : ""}${c.deviation_pct}% |`);
     }
@@ -429,7 +432,7 @@ async function cmdRecall(cwd: string, args: ParsedArgs): Promise<CliResult> {
     lines.push(`WARNING [${w.reason}] ${w.run_id}: ${w.detail}`);
   }
   for (const e of errors) {
-    lines.push(`(unreadable record: ${e.file} — ${e.message})`);
+    lines.push(`(unreadable record: ${e.file} â€” ${e.message})`);
   }
   return ok(lines.join("\n"));
 }
@@ -444,7 +447,7 @@ async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
   process.on("SIGINT", () => {
     void handle.close().then(() => process.exit(0));
   });
-  return ok(`panel running at ${handle.url} — Ctrl+C to stop`);
+  return ok(`panel running at ${handle.url} â€” Ctrl+C to stop`);
 }
 
 /** Repo root, resolved from this module's location (dev layout). */
@@ -489,7 +492,7 @@ async function cmdAudit(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const files = await collectScannableFiles(dir);
   const secrets = scanSecrets(files);
 
-  // npm audit exits nonzero when vulnerabilities exist — that is a result,
+  // npm audit exits nonzero when vulnerabilities exist â€” that is a result,
   // not a command failure. Only a spawn failure / empty output is an error.
   let dependencies;
   let depWarning: string | undefined;
@@ -598,7 +601,7 @@ async function cmdLibrary(cwd: string, args: ParsedArgs): Promise<CliResult> {
     case "list": {
       const entries = await listLibrary(dir);
       if (!entries.length) return ok(`(library empty: ${dir})`);
-      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] — ${e.description ?? ""}`).join("\n"));
+      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] â€” ${e.description ?? ""}`).join("\n"));
     }
     case "find": {
       const entries = await findInLibrary(dir, {
@@ -606,7 +609,7 @@ async function cmdLibrary(cwd: string, args: ParsedArgs): Promise<CliResult> {
         ...(args.flags.tags !== undefined ? { tags: args.flags.tags.split(",") } : {}),
       });
       if (!entries.length) return fail("(no matching library entries)");
-      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] — ${e.description ?? ""}\n  ${e.filePath}`).join("\n"));
+      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] â€” ${e.description ?? ""}\n  ${e.filePath}`).join("\n"));
     }
     case "save": {
       const file = rest[0];
@@ -646,7 +649,7 @@ async function cmdDoctor(cwd: string): Promise<CliResult> {
 
   const state = reduceLedger(events);
   if (state.runId && !state.outcome) {
-    lines.push(`unfinished run detected: ${state.runId} (phase: ${state.phase ?? "?"}) — resume from ledger`);
+    lines.push(`unfinished run detected: ${state.runId} (phase: ${state.phase ?? "?"}) â€” resume from ledger`);
   }
   if (state.anomalies.length) {
     lines.push(`state anomalies: ${state.anomalies.length}`);
@@ -664,6 +667,31 @@ async function cmdDoctor(cwd: string): Promise<CliResult> {
 
   lines.push(healthy ? "doctor: healthy" : "doctor: PROBLEMS FOUND");
   return healthy ? ok(lines.join("\n")) : fail(lines.join("\n"));
+}
+
+async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const [mode, unit] = args.positional;
+  if ((mode !== "produce" && mode !== "verify") || !unit || !args.flags.workspace) {
+    return fail("usage: clockwork codex <produce|verify> <unit> --workspace <linked-worktree> [--model ID --codex-bin /absolute/codex --timeout-ms N --windows-sandbox elevated|unelevated|mxc]");
+  }
+  const timeoutMs = args.flags["timeout-ms"] === undefined ? 15 * 60_000 : Number(args.flags["timeout-ms"]);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3_600_000) return fail("timeout-ms must be between 1000 and 3600000");
+  const windowsSandbox = args.flags["windows-sandbox"];
+  if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  try {
+    const report = await runUnit({ project: cwd, workspace: args.flags.workspace, unit,
+      mode, model: args.flags.model, signal: controller.signal,
+      adapter: new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }),
+    });
+    return { code: report.outcome === "rework" || report.outcome === "blocked" ? 1 : 0, out: JSON.stringify(report, null, 2) };
+  } finally {
+    process.removeListener("SIGINT", interrupt);
+    process.removeListener("SIGTERM", interrupt);
+  }
 }
 
 /* ---------------- dispatch ---------------- */
@@ -689,6 +717,7 @@ const USAGE = `clockwork <command>
   audit [--dir D --json]        secret scan + npm audit card (reject exits nonzero)
   gp verify <evidence-dir>      mechanical golden-path threshold check (--golden-path gp-N)
   prompt <unit|verify|agentdef> <id>   print a generated prompt
+  codex <produce|verify> <unit> --workspace <path>   run a bounded local Codex worker
   doctor                        environment and ledger self-check`;
 
 export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
@@ -744,6 +773,8 @@ export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
         return await cmdLibrary(cwd, args);
       case "prompt":
         return await cmdPrompt(cwd, args);
+      case "codex":
+        return await cmdCodex(cwd, args);
       case "doctor":
         return await cmdDoctor(cwd);
       default:

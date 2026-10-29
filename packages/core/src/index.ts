@@ -82,3 +82,7 @@ export type {
   RetroUnitSignal,
   UserVerdict,
 } from "./retro/record.js";
+
+export { buildUnitPrompt, buildVerifierPrompt, buildAgentDefinition } from "./execution/prompts.js";
+export type * from "./execution/types.js";
+export { withStorageLock, atomicWrite, assertStorageFile } from "./storage/lock.js";

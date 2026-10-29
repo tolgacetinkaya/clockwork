@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added experimental local Codex producer/verifier execution in linked worktrees, shared execution contracts, live agent activity and token accounting.
+- Added receipt-based delivery checks, pause/stop interruption, failure/usage reconciliation, independent read-only verification and Codex orchestration instructions.
+- Retained the Claude plugin and its hook; Codex ownership checks are delivery gates, not a replacement PreToolUse hook.
+
 - React 19 / Tailwind panel with task, agent, activity, and decision views.
 - Shared SSE snapshots with reconnect recovery, TanStack Query state, and Zustand UI state.
 - Live controls and durable operator requests, plus CLI-to-browser transport tests.

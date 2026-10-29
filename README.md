@@ -7,8 +7,9 @@ specialized AI teams. It decomposes work into units, records a reviewable team
 specification, tracks dependencies and budgets, and keeps an append-only event
 ledger for verification and session recovery.
 
-The core is platform-independent TypeScript. The current execution adapter is
-for Claude Code; other coding-agent adapters are planned.
+The core is platform-independent TypeScript. Execution integrations include the
+Claude Code plugin and an experimental local Codex CLI unit runner. Gemini and
+direct model API adapters are planned.
 
 ## Current status
 
@@ -22,6 +23,7 @@ Implemented:
 - YAML team specifications, dependency checks, and versioned amendments.
 - Event admission, state replay, budget accounting, and retrospective records.
 - Claude Code prompt generation and a PreToolUse approval hook.
+- Local Codex producer/verifier execution with shared lifecycle and delivery gates.
 - A local management panel, control requests, and a durable command queue.
 
 The panel uses React 19, Tailwind CSS, and a shared SSE stream. Overview,
@@ -31,8 +33,8 @@ shows recorded activity; it does not start an orchestrator or AI agents.
 
 ## Get started
 
-Requires **Node.js 24 or newer**, npm, and Git. Docker is optional. Claude Code
-is needed only for the execution integration, not for tests or the demo panel.
+Requires **Node.js 24 or newer**, npm, and Git. Docker is optional. Executing AI
+work needs Claude Code or the local Codex CLI; tests and the demo panel need neither.
 
 ```sh
 git clone https://github.com/tolgacetinkaya/clockwork.git
@@ -100,11 +102,21 @@ project root in the trusted launcher's environment. Confirm that the plugin
 and hook are active in the actual session before relying on the guard.
 Pure hook tests do not prove that a live Claude session loaded it.
 
+## Local Codex integration
+
+Codex can produce an approved work unit in a linked Git worktree and verify it in
+an independent read-only session. Its thread/activity/usage/report events feed the
+same ledger and panel. The first runner is sequential; it does not start a fully
+autonomous scheduler. See [local Codex setup and boundaries](docs/codex-local.md)
+and [Codex orchestrator instructions](integrations/codex/skills/clockwork/SKILL.md).
+
 ## Architecture and development
 
 ```text
 packages/core/            Specs, ledger, budget, queue, verification, recall
-packages/adapter-claude/  Guard hook and agent prompt builders
+packages/adapter-claude/  Claude guard hook and compatibility prompt exports
+packages/adapter-codex/   Local Codex process and JSONL adapter
+packages/runner/          Shared bounded unit execution and delivery gates
 packages/cli/             CLI entry point
 packages/panel/           Local HTTP server and management panel
 plugin/                   Claude Code plugin and orchestrator skill
