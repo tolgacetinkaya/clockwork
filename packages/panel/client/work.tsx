@@ -3,6 +3,7 @@ import type { PanelSnapshot } from "../src/protocol.js";
 import { usePanelUI } from "./state.js";
 import type { Filter } from "./state.js";
 import { compact, title, unitTitle, matchesFilter } from "./format.js";
+import { UnitActivity } from "./unit-activity.js";
 import { Avatar, Status, Empty } from "./ui.js";
 
 export function WorkList({ snapshot }: { snapshot: PanelSnapshot }) {
@@ -57,6 +58,7 @@ export function WorkList({ snapshot }: { snapshot: PanelSnapshot }) {
               </td>
               <td>
                 <Status value={unit.status} />
+                <UnitActivity snapshot={snapshot} id={id} />
               </td>
               <td className="text-right token-cell">
                 {unit.spent ? compact(unit.spent) : "—"}
@@ -89,13 +91,13 @@ const columns = [
   {
     label: "Up next",
     hint: "Waiting for its moment",
-    statuses: ["pending", "blocked"],
+    statuses: ["pending", "blocked", "rework"],
     tone: "neutral",
   },
   {
     label: "In motion",
     hint: "Execution and iteration",
-    statuses: ["running", "rework", "failed"],
+    statuses: ["running", "failed"],
     tone: "orange",
   },
   {
@@ -192,6 +194,7 @@ export function Workboard({ snapshot }: { snapshot: PanelSnapshot }) {
                     </div>
                     <h3>{unitTitle(snapshot, id)}</h3>
                     <Status value={unit.status} />
+                    <UnitActivity snapshot={snapshot} id={id} />
                     <div className="task-card-footer">
                       {unit.agent ? (
                         <span className="inline-agent">

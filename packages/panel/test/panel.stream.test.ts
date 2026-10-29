@@ -15,6 +15,8 @@ import { startPanel } from "../src/server.js";
 import type { PanelHandle } from "../src/server.js";
 import type { PanelSnapshot } from "../src/protocol.js";
 
+import { teamSummary, activeTeam, unitActivity } from "../client/team-summary.js";
+
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 async function stream(url: string, lastId?: string) {
@@ -71,7 +73,7 @@ describe("shared live panel transport", () => {
     );
     await writer.append("run.started", { data: { run_id: "live-run" } });
     await writer.append("spec.approved", {
-      data: { version: 1, budget_target: 100, units: [{ id: "task" }] },
+      data: { version: 1, budget_target: 100, units: [{ id: "task" }, { id: "independent" }, { id: "dependent", depends_on: ["task", "independent"] }] },
     });
     await writer.append("unit.started", {
       unit_id: "task",
@@ -207,6 +209,60 @@ describe("shared live panel transport", () => {
       snapshot.agents.find((agent) => agent.id === "builder")?.status,
     ).toBe("completed");
     expect(snapshot.events.at(-1)?.type).toBe("agent.activity");
+  });
+
+  it("streams concurrent producers and a verifier without changing unrelated work or releasing dependencies", async () => {
+    await writer.append("unit.started", { unit_id: "independent", agent_id: "second" });
+    await writer.append("agent.spawned", { unit_id: "task", agent_id: "builder", data: { mode: "produce", provider: "codex", model: "gpt-6.1-sol" } });
+    await writer.append("agent.spawned", { unit_id: "independent", agent_id: "second", data: { mode: "produce", provider: "codex", model: "gpt-6.1-sol" } });
+    const client = await connect(panel.url);
+    const concurrent = await client.next();
+    expect(teamSummary(concurrent)).toEqual({ producers: 2, verifiers: 0, waiting: 1 });
+    expect(concurrent.state.units.dependent?.status).toBe("pending");
+    await writer.append("agent.completed", { unit_id: "task", agent_id: "builder" });
+    await writer.append("unit.verify_started", { unit_id: "task" });
+    await writer.append("agent.spawned", { unit_id: "task", agent_id: "builder-codex-verify-1", data: { mode: "verify", provider: "codex", model: "gpt-6.1-sol" } });
+    const verifying = await client.next((snapshot) => snapshot.agents.some((agent) => agent.id === "builder-codex-verify-1"));
+    expect(teamSummary(verifying)).toEqual({ producers: 1, verifiers: 1, waiting: 1 });
+    expect(verifying.state.units.independent).toEqual(concurrent.state.units.independent);
+    expect(verifying.agents.find((agent) => agent.id === "second")).toEqual(concurrent.agents.find((agent) => agent.id === "second"));
+    expect(verifying.agents.find((agent) => agent.id === "builder-codex-verify-1")).toMatchObject({ status: "verifying", provider: "codex", model: "gpt-6.1-sol" });
+    expect(activeTeam(verifying).map((agent) => agent.id)).toEqual(["second", "builder-codex-verify-1", "builder"]);
+    expect(verifying.state.units.dependent?.status).toBe("pending");
+    expect(unitActivity(verifying, "dependent")).toMatchObject({
+      readiness: "Waiting on dependencies", waitingOn: ["task", "independent"], actors: [],
+    });
+    expect(unitActivity(verifying, "task")).toMatchObject({ stage: "Verification", actors: [{ id: "builder-codex-verify-1" }] });
+    expect(unitActivity(verifying, "independent")).toMatchObject({ stage: "Production", actors: [{ id: "second" }] });
+    expect(unitActivity(verifying, "unknown")).toBeNull();
+    const paused = { ...verifying, control: { ...verifying.control, paused: true } };
+    expect(unitActivity(paused, "task")).toMatchObject({ readiness: "Run paused", stage: null, actors: [] });
+    expect(unitActivity({ ...paused, control: { paused: true, kill: true } }, "dependent")).toMatchObject({ readiness: "Run stopped" });
+    const rework = structuredClone(verifying);
+    rework.state.units.task!.status = "rework";
+    expect(unitActivity(rework, "task")).toMatchObject({ readiness: "Needs rework", stage: null, actors: [] });
+    const awaiting = structuredClone(concurrent);
+    awaiting.agents.find((agent) => agent.id === "builder")!.status = "completed";
+    expect(unitActivity(awaiting, "task")).toMatchObject({ readiness: "Awaiting verification", actors: [] });
+
+    await writer.append("agent.completed", { unit_id: "task", agent_id: "builder-codex-verify-1" });
+    await writer.append("unit.accepted", { unit_id: "task" });
+    const partlyReady = await client.next((snapshot) => snapshot.state.units.task?.status === "accepted");
+    expect(unitActivity(partlyReady, "dependent")?.waitingOn).toEqual(["independent"]);
+    await writer.append("agent.completed", { unit_id: "independent", agent_id: "second" });
+    await writer.append("unit.verify_started", { unit_id: "independent" });
+    await writer.append("unit.accepted", { unit_id: "independent" });
+    const ready = await client.next((snapshot) => snapshot.state.units.independent?.status === "accepted");
+    expect(unitActivity(ready, "dependent")).toMatchObject({ readiness: "Dependencies satisfied", waitingOn: [] });
+    expect(teamSummary(ready)).toEqual({ producers: 0, verifiers: 0, waiting: 0 });
+    const done = structuredClone(ready);
+    done.state.outcome = "done";
+    expect(unitActivity(done, "task")?.readiness).toBeNull();
+    expect(unitActivity(done, "dependent")?.readiness).toBe("Run complete");
+    expect(teamSummary(paused)).toMatchObject({ producers: 0, verifiers: 0 });
+    expect(teamSummary({ ...verifying, control: { paused: false, kill: true } })).toMatchObject({ producers: 0, verifiers: 0 });
+
+    expect(verifying.revision).toBeGreaterThan(concurrent.revision);
   });
 
   it("does not resend an unchanged large snapshot on every socket drain", async () => {

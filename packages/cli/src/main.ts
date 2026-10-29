@@ -65,7 +65,7 @@ import {
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
 import { CodexAdapter } from "@clockwork/adapter-codex";
-import { runUnit } from "@clockwork/runner";
+import { runTeam, runUnit } from "@clockwork/runner";
 
 const TS_DIR = ".teamsmith";
 const LEDGER = "ledger.jsonl";
@@ -671,9 +671,12 @@ async function cmdDoctor(cwd: string): Promise<CliResult> {
 
 async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const [mode, unit] = args.positional;
-  if ((mode !== "produce" && mode !== "verify") || !unit || !args.flags.workspace) {
-    return fail("usage: clockwork codex <produce|verify> <unit> --workspace <linked-worktree> [--model ID --codex-bin /absolute/codex --timeout-ms N --windows-sandbox elevated|unelevated|mxc]");
+  if ((mode !== "team" && mode !== "produce" && mode !== "verify") || (mode !== "team" && (!unit || !args.flags.workspace)) || (mode === "team" && (unit || args.flags.workspace))) {
+    return fail("usage: clockwork codex team [--concurrency 2] | <produce|verify> <unit> --workspace <linked-worktree> [--model ID --codex-bin /absolute/codex --timeout-ms N --windows-sandbox elevated|unelevated|mxc]");
   }
+  const concurrency = args.flags.concurrency === undefined ? 2 : Number(args.flags.concurrency);
+  if (mode === "team" && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)) return fail("concurrency must be an integer between 1 and 8");
+  if (mode !== "team" && args.flags.concurrency !== undefined) return fail("concurrency is only supported by codex team");
   const timeoutMs = args.flags["timeout-ms"] === undefined ? 15 * 60_000 : Number(args.flags["timeout-ms"]);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3_600_000) return fail("timeout-ms must be between 1000 and 3600000");
   const windowsSandbox = args.flags["windows-sandbox"];
@@ -683,9 +686,14 @@ async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
   process.once("SIGINT", interrupt);
   process.once("SIGTERM", interrupt);
   try {
-    const report = await runUnit({ project: cwd, workspace: args.flags.workspace, unit,
+    const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
+    if (mode === "team") {
+      const report = await runTeam({ project: cwd, adapter, concurrency, model: args.flags.model, signal: controller.signal });
+      return { code: report.status === "completed" && Object.keys(report.failures).length === 0 ? 0 : 1, out: JSON.stringify(report, null, 2) };
+    }
+    const report = await runUnit({ project: cwd, workspace: args.flags.workspace!, unit: unit!,
       mode, model: args.flags.model, signal: controller.signal,
-      adapter: new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }),
+      adapter,
     });
     return { code: report.outcome === "rework" || report.outcome === "blocked" ? 1 : 0, out: JSON.stringify(report, null, 2) };
   } finally {
@@ -717,6 +725,7 @@ const USAGE = `clockwork <command>
   audit [--dir D --json]        secret scan + npm audit card (reject exits nonzero)
   gp verify <evidence-dir>      mechanical golden-path threshold check (--golden-path gp-N)
   prompt <unit|verify|agentdef> <id>   print a generated prompt
+  codex team [--concurrency 2]  schedule approved Codex units (1-8 concurrent)
   codex <produce|verify> <unit> --workspace <path>   run a bounded local Codex worker
   doctor                        environment and ledger self-check`;
 

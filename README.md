@@ -24,7 +24,8 @@ Implemented:
 - Event admission, state replay, budget accounting, and retrospective records.
 - Claude Code prompt generation and a PreToolUse approval hook.
 - Local Codex producer/verifier execution with shared lifecycle and delivery gates.
-- A local management panel, control requests, and a durable command queue.
+- A local management panel with production/verification stages, dependency waiting
+  reasons, control requests, and a durable command queue.
 
 The panel uses React 19, Tailwind CSS, and a shared SSE stream. Overview,
 workboard, team, activity, and decisions share one TanStack Query cache; Zustand
@@ -106,8 +107,10 @@ Pure hook tests do not prove that a live Claude session loaded it.
 
 Codex can produce an approved work unit in a linked Git worktree and verify it in
 an independent read-only session. Its thread/activity/usage/report events feed the
-same ledger and panel. The first runner is sequential; it does not start a fully
-autonomous scheduler. See [local Codex setup and boundaries](docs/codex-local.md)
+same ledger and panel. `clockwork codex team --concurrency 2` automatically
+schedules approved units in isolated worktrees, integrates accepted dependencies
+before downstream work, and retains an integration worktree for review. It never
+auto-merges the user branch. See [local Codex setup and boundaries](docs/codex-local.md)
 and [Codex orchestrator instructions](integrations/codex/skills/clockwork/SKILL.md).
 
 ## Architecture and development

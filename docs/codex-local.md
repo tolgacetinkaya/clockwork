@@ -4,7 +4,7 @@ Clockwork has a local Codex CLI adapter in addition to its Claude Code plugin.
 The common runner takes an approved work unit, executes a producer, and runs a
 fresh, independent verifier. It records both sessions in the existing ledger;
 the React panel follows the same SSE projection. This is bounded unit execution,
-not an autonomous background scheduler or a Codex desktop plugin.
+with an optional foreground team scheduler; it is not a Codex desktop plugin.
 
 ## Requirements
 
@@ -73,10 +73,49 @@ receives no producer report/reasoning, and runs read-only. Checks that need
 writable build/cache directories cannot be certified by this first verifier;
 report rework rather than treating an unexecuted check as success.
 
-The worktree remains available for review and integration; Clockwork never merges,
-commits or deletes it. Review accepted changes and integrate them into your own
-branch before preparing downstream worktrees. The first runner serializes workers
-per target project; automatic parallel scheduling is future work.
+For these single-unit commands, the worktree remains available for review and
+manual integration. Review accepted changes and integrate them into your own
+branch before preparing downstream worktrees. Do not run a separate unit command
+while a team owns the project execution lock.
+
+## Execute an approved team
+
+```sh
+cw codex team --concurrency 2 --model <confirmed-model-id>
+```
+
+The foreground scheduler starts ready units automatically and runs a fresh
+read-only verifier after each producer. `--concurrency` defaults to 2 and accepts
+integers from 1 through 8; it bounds active unit pipelines. The same `--model`,
+`--codex-bin`, `--timeout-ms`, and `--windows-sandbox` options apply. No
+`--workspace` or unit argument is needed. Planning, actual user approval, recorded
+estimates, and execute-phase admission are still required.
+
+The team creates an isolated integration worktree and separate worker worktrees.
+Accepted changes receive local delivery commits and are integrated into that
+integration worktree before dependent units start, so downstream workers see their
+accepted prerequisites. Independent ready units can run in parallel. The user's
+branch is never automatically merged or published. Worktrees and the integration
+result are retained for review; the JSON result reports `integrationWorkspace`,
+`accepted`, and `failures`. Exit code 0 requires completed status without failures.
+
+Concurrency counts unit pipelines, each with a producer followed by a verifier.
+Admission reserves **2 × each unit's `budget_est`** for those two sessions. The
+full reservation stays in place conservatively until integration finishes, even
+as actual usage is recorded. Admission checks recorded spending plus active
+reservations against the remaining budget. Actual usage can exceed an estimate;
+reservations cannot impose a hard provider token or spending cap. Unknown usage
+blocks further execution until verified reconciliation.
+
+Pause/stop controls, SIGINT/SIGTERM, and worker failures stop new admission and
+interrupt active workers. Review the durable ledger, team receipt, usage and
+retained worktrees after a stop or crash. A normally settled stop also raises a
+blocking review checkpoint; inspect and resolve it before resuming. A previous
+team receipt requires manual
+recovery review; rerunning the command does not silently retry failed units,
+rework or integration. Preserve evidence and reconcile unknown usage before an
+explicit reviewed plan amendment or recovery. The scheduler does not automatically
+consume or acknowledge the operator command queue.
 
 ## Delivery boundaries and recovery
 

@@ -53,8 +53,16 @@ The `.teamsmith` directory is private orchestration state: mutate it only via CL
   unchanged receipt/worktree. Preserve all files needed for review.
 - A verifier that cannot run a write-requiring build must report it as unverified.
   Do not claim a passing source review proves runtime behavior.
-- The first runner permits only one active worker per project. Do not invent
-  parallel scheduling or nest subagents inside the bounded Codex worker.
+- For automatic approved execution, use `cw codex team --concurrency 2` (1-8).
+  Pass the same confirmed model and configured native sandbox options as above.
+  The scheduler creates isolated workers, verifies deliveries independently, and
+  integrates accepted dependencies into its dedicated integration worktree before
+  starting downstream units. Do not run competing schedulers or unit commands.
+  Do not nest subagents inside bounded Codex workers.
+- Team execution makes local delivery/integration commits in dedicated worktrees;
+  it never auto-merges the user branch. Review the retained integration result.
+  Budget reservations bound concurrent admission, not provider spending. A stopped
+  team receipt requires manual recovery review; do not automatically retry it.
 
 ## User input and completion
 
@@ -65,7 +73,8 @@ applying them. A note may be acknowledged after reading; requests are never proo
 that their effect happened. Respect controls; resume from a separate operator
 terminal if paused.
 
-After independent acceptance, review/integrate delivered changes using the user's
+After independent acceptance, review/integrate delivered changes (including the
+team integration worktree, if used) using the user's
 Git workflow. Never merge, publish or delete worktrees merely to finish this skill.
 The panel can be opened from the target root with `cw ui --port <free-port>`.
 Before completion, check all units, unanswered questions and blocking checkpoints.

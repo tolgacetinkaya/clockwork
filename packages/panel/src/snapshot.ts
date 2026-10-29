@@ -100,6 +100,8 @@ export async function readPanelData(
     if (!event.agent_id) continue;
     const agent = ensure(event.agent_id);
     agent.lastEventAt = event.ts;
+    if (typeof event.data?.provider === "string") agent.provider = event.data.provider;
+    if (typeof event.data?.model === "string") agent.model = event.data.model;
     if (event.unit_id && !agent.units.includes(event.unit_id))
       agent.units.push(event.unit_id);
     if (event.type === "agent.completed") agent.status = "completed";

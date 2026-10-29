@@ -19,7 +19,7 @@ import type {
   Spec,
   RunState,
 } from "@clockwork/core";
-import { checkWorkspace, fingerprint, withinOwnership } from "./workspace.js";
+import { git, checkWorkspace, fingerprint, withinOwnership } from "./workspace.js";
 export interface RunUnitOptions {
   project: string;
   workspace: string;
@@ -56,6 +56,7 @@ async function control(project: string): Promise<void> {
 }
 async function preflight(
   project: string,
+  allowExhausted = false,
 ): Promise<{ spec: Spec; state: RunState }> {
   await control(project);
   const ledger = await readLedger(join(project, ".teamsmith/ledger.jsonl"));
@@ -79,8 +80,8 @@ async function preflight(
     throw new Error("Run is not ready for execution");
   if (
     !state.budgetTarget ||
-    state.totalSpent >= state.budgetTarget ||
-    state.budgetExhausted
+    (!allowExhausted && (state.totalSpent >= state.budgetTarget ||
+    state.budgetExhausted))
   )
     throw new Error("No recorded token budget remains");
   // A failed process may have consumed tokens without returning its usage. Never infer zero.
@@ -102,11 +103,12 @@ async function preflight(
   return { spec: loaded.spec, state };
 }
 /** One active worker per project. The orchestration policy is independent of the provider. */
-export async function runUnit(
-  options: RunUnitOptions,
-): Promise<ExecutionReport> {
+export async function runUnit(options: RunUnitOptions): Promise<ExecutionReport> {
+  return withStorageLock(join(options.project, ".teamsmith/execution"), () => executeUnit(options));
+}
+// Private: only the scheduler holding the project execution lease may bypass it.
+async function executeUnit(options: RunUnitOptions): Promise<ExecutionReport> {
   const { project, unit: unitId, mode, adapter } = options;
-  return withStorageLock(join(project, ".teamsmith/execution"), async () => {
     options.signal?.throwIfAborted();
     const { spec, state } = await preflight(project);
     const unit = spec.work_units.find((u) => u.id === unitId);
@@ -367,5 +369,193 @@ and passed boolean. Missing evidence is not success. Do not put credentials into
       clearInterval(timer);
       options.signal?.removeEventListener("abort", abort);
     }
+
+}
+
+export interface RunTeamOptions {
+  project: string;
+  adapter: ExecutionAdapter;
+  concurrency?: number;
+  model?: string;
+  signal?: AbortSignal;
+}
+export interface TeamResult {
+  status: "completed" | "stopped";
+  accepted: string[];
+  failures: Record<string, string>;
+  integrationWorkspace?: string;
+}
+
+/** Owns one project lease for the entire team, including integration and settlement.
+ * Worktrees and the durable receipt are deliberately retained for operator review.
+ * Estimates reserve BOTH producer and verifier sessions; these are admission limits,
+ * not provider token caps. Actual usage remains authoritative in the ledger.
+ */
+export async function runTeam(options: RunTeamOptions): Promise<TeamResult> {
+  const concurrency = options.concurrency ?? 2;
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8)
+    throw new Error("Team concurrency must be an integer from 1 to 8");
+  const { project } = options;
+  return withStorageLock(join(project, ".teamsmith/execution"), async () => {
+    const result: TeamResult = { status: "stopped", accepted: [], failures: {} };
+    const receiptPath = join(project, ".teamsmith/team.json");
+    await assertStorageFile(receiptPath);
+    try {
+      await readFile(receiptPath, "utf8");
+      throw new Error("A team receipt already exists; review its preserved worktrees and reconcile state before another team run");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const initial = await preflight(project);
+    if (Object.values(initial.state.units).some(u => u.status !== "pending"))
+      throw new Error("Team execution requires pending units; existing deliveries need manual reconciliation");
+    const controller = new AbortController();
+    const abort = () => controller.abort(new Error("Team execution stopped"));
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) abort();
+    const id = randomUUID();
+    // Git's own worktree registry owns these paths; never delete them automatically.
+    const root = join(project, "..", `.clockwork-team-${id}`);
+    const workspaces: Record<string, string> = {};
+    const commits: Record<string, string> = {};
+    const active = new Map<string, Promise<void>>();
+    const reservations = new Map<string, number>();
+    let stopped = false;
+    let integration: Promise<void> = Promise.resolve();
+    let persistence: Promise<void> = Promise.resolve();
+    const persist = () => {
+      const next = persistence.then(() => atomicWrite(receiptPath, JSON.stringify({
+        version: 1, specVersion: initial.spec.spec_version, id,
+        ...result, workspaces, commits, reservations: Object.fromEntries(reservations),
+      }, null, 2)));
+      persistence = next.catch(() => {});
+      return next;
+    };
+    const fail = (unit: string, error: unknown) => {
+      result.failures[unit] ??= error instanceof Error ? error.message : String(error);
+      stopped = true;
+      abort();
+    };
+    const observe = async () => {
+      controller.signal.throwIfAborted();
+      const current = await preflight(project, true);
+      if (current.spec.spec_version !== initial.spec.spec_version)
+        throw new Error("Specification changed during team execution");
+      if (Object.values(current.state.units).some(u => ["cancelled", "failed", "rework"].includes(u.status)))
+        throw new Error("A unit was cancelled, failed, or requires rework");
+      return current;
+    };
+    const teamWriter = await LedgerWriter.open(join(project, ".teamsmith/ledger.jsonl"));
+    let observation: Promise<void> | undefined;
+    let observing = false;
+    const timer = setInterval(() => {
+      if (observing || stopped) return;
+      observing = true;
+      observation = observe().then(() => {}).catch(error => fail("team", error)).finally(() => { observing = false; });
+    }, 200);
+    try {
+      await persist(); // Record intent BEFORE creating any Git worktree.
+      controller.signal.throwIfAborted();
+      await mkdir(root, { recursive: true });
+      result.integrationWorkspace = join(root, "integration");
+      await persist();
+      await git(project, "worktree", "add", "-b", `clockwork/team-${id}`, result.integrationWorkspace, "HEAD");
+      while (!stopped) {
+        const { spec } = await observe();
+        if (result.accepted.length === spec.work_units.length) {
+          result.status = "completed";
+          break;
+        }
+        for (const unit of spec.work_units) {
+          if (active.size >= concurrency || stopped) break;
+          if (active.has(unit.id) || result.accepted.includes(unit.id)) continue;
+          if (!(unit.depends_on ?? []).every(dep => result.accepted.includes(dep))) continue;
+          if (unit.budget_est === undefined) {
+            fail(unit.id, new Error("Team execution requires an explicit budget estimate for producer and verifier reservations"));
+            break;
+          }
+          const reservation = 2 * parseBudget(unit.budget_est);
+          if (!Number.isSafeInteger(reservation) || reservation <= 0) {
+            fail(unit.id, new Error("Team budget estimate must be a positive safe integer"));
+            break;
+          }
+          // Git creation and other admissions await I/O: refresh actual usage and
+          // live reservations for EVERY candidate, never reuse an old snapshot.
+          const admission = await observe();
+          const available = admission.state.budgetTarget! - admission.state.totalSpent - [...reservations.values()].reduce((a, b) => a + b, 0);
+          if (reservation > available) continue;
+          reservations.set(unit.id, reservation);
+          const workspace = join(root, unit.id);
+          workspaces[unit.id] = workspace;
+          await persist();
+          await git(project, "worktree", "add", "--detach", workspace, await git(result.integrationWorkspace!, "rev-parse", "HEAD"));
+          await observe();
+          const task = (async () => {
+            try {
+              const common = { project, workspace, unit: unit.id, adapter: options.adapter, model: options.model, signal: controller.signal };
+              const produced = await executeUnit({ ...common, mode: "produce" });
+              if (produced.outcome !== "completed") throw new Error("Producer reported blocked");
+              await observe();
+              const verified = await executeUnit({ ...common, mode: "verify" });
+              if (verified.outcome !== "accepted") throw new Error("Verification requires rework; automatic retries are disabled");
+              // Queue integration: independent workers may finish simultaneously.
+              const next = integration.then(async () => {
+                await observe();
+                const delivery: Receipt = JSON.parse(await readFile(join(project, ".teamsmith/executions", `${unit.id}.json`), "utf8"));
+                const current = await fingerprint(workspace);
+                if (current.head !== delivery.head || current.hash !== delivery.hash)
+                  throw new Error("Verified delivery changed before integration; manual review required");
+                await git(workspace, "add", "--all");
+                await git(workspace, "-c", "user.name=Clockwork", "-c", "user.email=clockwork@localhost", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", `Clockwork accepted ${unit.id}`);
+                const commit = await git(workspace, "rev-parse", "HEAD");
+                // Persist the source commit before cherry-pick: interruption is recoverable.
+                commits[unit.id] = commit;
+                await persist();
+                await observe();
+                await git(result.integrationWorkspace!, "-c", "user.name=Clockwork", "-c", "user.email=clockwork@localhost", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "cherry-pick", "--allow-empty", commit);
+                result.accepted.push(unit.id);
+                await persist();
+              });
+              integration = next.catch(() => {});
+              await next;
+            } catch (error) {
+              fail(unit.id, error);
+            }
+            finally { reservations.delete(unit.id); active.delete(unit.id); }
+          })();
+          active.set(unit.id, task);
+        }
+        if (stopped) break;
+        if (result.accepted.length === spec.work_units.length) {
+          result.status = "completed";
+          break;
+        }
+        if (!active.size) {
+          fail("team", new Error("No dispatchable unit fits the remaining producer/verifier budget reservations or dependency graph"));
+          break;
+        }
+        await Promise.race(active.values());
+      }
+    } catch (error) { fail("team", error); }
+    finally {
+      clearInterval(timer);
+      await observation;
+      await Promise.allSettled(active.values());
+      await integration;
+      if (!stopped) {
+        try { await observe(); } catch (error) { fail("team", error); }
+      }
+      options.signal?.removeEventListener("abort", abort);
+      if (stopped) {
+        result.status = "stopped";
+        await teamWriter.append("interaction.checkpoint_raised", { actor: "orchestrator", data: {
+          ref: `team-${id}`, kind: "gate", blocking: true,
+          message: "Team execution stopped. Review the preserved team receipt, worktrees, and integration state before resuming.",
+          failures: result.failures, integration_workspace: result.integrationWorkspace,
+        } });
+      }
+      await persist();
+    }
+    return result;
   });
 }
