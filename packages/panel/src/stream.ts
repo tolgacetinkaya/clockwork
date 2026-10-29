@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ServerResponse } from "node:http";
 import { readPanelData } from "./snapshot.js";
-import type { PanelSnapshot } from "./protocol.js";
+import type { LaunchState, PanelSnapshot } from "./protocol.js";
 
 /** One shared projection pump per server, regardless of the number of tabs/screens. */
 export class PanelStream {
@@ -25,6 +25,7 @@ export class PanelStream {
   constructor(
     private readonly projectDir: string,
     private readonly demo = false,
+    private readonly launch?: () => LaunchState,
   ) {}
 
   refresh(): Promise<PanelSnapshot> {
@@ -48,6 +49,7 @@ export class PanelStream {
 
   private async read(): Promise<PanelSnapshot> {
     const data = await readPanelData(this.projectDir, this.demo);
+    if (this.launch) data.launch = this.launch();
     const fingerprint = JSON.stringify(data);
     if (fingerprint !== this.fingerprint || !this.current || this.failed) {
       this.fingerprint = fingerprint;

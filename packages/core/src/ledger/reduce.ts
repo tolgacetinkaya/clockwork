@@ -82,6 +82,7 @@ interface UnitSnapshot {
 }
 
 const LEGAL_SOURCE: Record<string, UnitStatus[]> = {
+  "unit.retry_requested": ["failed", "rework"],
   "unit.started": ["pending", "rework", "blocked"],
   "unit.verify_started": ["running"],
   "unit.rework": ["verifying"],
@@ -91,6 +92,7 @@ const LEGAL_SOURCE: Record<string, UnitStatus[]> = {
 };
 
 const TARGET: Record<string, UnitStatus> = {
+  "unit.retry_requested": "pending",
   "unit.started": "running",
   "unit.verify_started": "verifying",
   "unit.rework": "rework",
@@ -211,6 +213,7 @@ function applyEvent(state: RunState, event: LedgerEvent): void {
       break;
     }
 
+    case "unit.retry_requested":
     case "unit.started":
     case "unit.verify_started":
     case "unit.rework":

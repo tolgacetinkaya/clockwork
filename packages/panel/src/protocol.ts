@@ -17,12 +17,24 @@ export interface PanelAgent {
   purpose: string | null;
   modelTier: string | null;
   provider?: string | null;
+  mode?: string | null;
   model?: string | null;
   status: "working" | "verifying" | "attention" | "idle" | "completed";
   units: string[];
   lastEventAt: string | null;
 }
+export interface LaunchState {
+  enabled: boolean;
+  disabledReason?: string;
+  draft?: { revision: string; spec: Spec };
+  approvalToken?: string;
+  status: "idle" | "running" | "completed" | "stopped" | "error";
+  error?: string;
+  result?: { status: "completed" | "stopped"; accepted: string[]; failures: Record<string, string>; integrationWorkspace?: string; integrationVerification?: { status: "passed" | "failed" | "not_configured"; [key: string]: unknown } };
+  recovery?: { recoveryToken: string; reasons: string[]; canResume: boolean; teamId?: string; accepted?: string[]; retry?: string[]; integrationWorkspace?: string; workspaces?: Record<string, string>; integrationVerification?: { status: "passed" | "failed" | "not_configured"; [key: string]: unknown } };
+}
 export interface PanelData {
+  launch?: LaunchState;
   schemaVersion: 1;
   mode: "workspace" | "recorded-demo";
   state: RunState;

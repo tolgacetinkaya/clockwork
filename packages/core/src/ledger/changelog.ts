@@ -32,6 +32,8 @@ function line(event: LedgerEvent): string | null {
       return `Spec amended v${String(data.from_version ?? "?")} → v${String(data.to_version ?? "?")} (${String(
         data.initiated_by ?? "?",
       )}): ${String(data.reason ?? "")}`;
+    case "unit.retry_requested":
+      return `${unit} retry requested by user.`;
     case "unit.started":
       return `${unit} started${event.agent_id ? ` (agent \`${event.agent_id}\`)` : ""}.`;
     case "unit.verify_started":

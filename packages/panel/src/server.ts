@@ -9,6 +9,8 @@ import { createServer } from "node:http";
 import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LaunchService } from "./launch.js";
+import type { PanelExecution } from "./launch.js";
 import { PanelStream } from "./stream.js";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import {
@@ -30,6 +32,8 @@ export interface StartPanelOptions {
   host?: "127.0.0.1" | "0.0.0.0";
   /** Marks fixture playback, without claiming that live agents are executing. */
   demo?: boolean;
+  /** Only trusted local CLI configuration may inject execution. */
+  execution?: PanelExecution;
 }
 
 export interface PanelHandle {
@@ -39,7 +43,7 @@ export interface PanelHandle {
 
 // Command bodies carry free-form operator text (answers, notes), so the cap
 // is generous compared to the terse /api/control patch.
-const MAX_BODY_BYTES = 8192;
+const MAX_BODY_BYTES = 65536;
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -135,6 +139,7 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   stream: PanelStream,
+  launch: LaunchService,
 ): Promise<void> {
   const method = req.method ?? "GET";
   const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
@@ -170,6 +175,23 @@ async function handleRequest(
       sendJson(res, 403, { error: "same-origin writes required" });
       return;
     }
+  }
+  if (pathname === "/api/launch" || pathname.startsWith("/api/launch/")) {
+    if (method === "GET" && pathname === "/api/launch") { sendJson(res, 200, launch.snapshot()); return; }
+    if (method !== "POST") { sendJson(res, 405, { error: "POST required" }); return; }
+    if (req.headers.origin && req.headers.origin !== `http://${authority}`) { sendJson(res, 403, { error: "Same-origin execution writes required" }); return; }
+    const site = req.headers["sec-fetch-site"];
+    if ((!req.headers.origin && site && site !== "same-origin" && site !== "none") || req.headers["content-type"]?.split(";")[0]?.trim() !== "application/json") {
+      sendJson(res, 403, { error: "Same-origin JSON execution writes required" }); return;
+    }
+    try {
+      const body: unknown = JSON.parse(await readBody(req));
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("JSON object required");
+      const state = await launch.request(pathname.slice("/api/launch/".length), body as Record<string, unknown>);
+      await stream.refresh();
+      sendJson(res, 200, state);
+    } catch (error) { sendJson(res, 409, { error: error instanceof Error ? error.message : "Launch request rejected" }); }
+    return;
   }
   if (method === "GET" && pathname === "/api/snapshot") {
     sendJson(res, 200, await stream.refresh());
@@ -326,9 +348,12 @@ export async function startPanel(
   if (host !== "127.0.0.1" && host !== "0.0.0.0")
     throw new Error("unsupported panel bind address");
 
-  const stream = new PanelStream(projectDir, options.demo);
+  const execution = options.demo || host !== "127.0.0.1" ? undefined : options.execution;
+  const launch = new LaunchService(projectDir, execution, execution ? undefined : options.demo ? "Recorded demo cannot launch agents" : host !== "127.0.0.1" ? "Execution requires a loopback-only server" : "Start the local CLI with --enable-execution to launch agents", () => { void stream.refresh().catch(() => {}); });
+  await launch.restore();
+  const stream = new PanelStream(projectDir, options.demo, () => launch.snapshot());
   const server: Server = createServer((req, res) => {
-    handleRequest(projectDir, req, res, stream).catch((err) => {
+    handleRequest(projectDir, req, res, stream, launch).catch((err) => {
       if (!res.headersSent) {
         sendJson(res, 500, {
           error: err instanceof Error ? err.message : String(err),
@@ -352,12 +377,15 @@ export async function startPanel(
     throw new Error("panel server failed to bind to a TCP port");
   }
 
+  let closing: Promise<void> | undefined;
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    close: () => closing ??= (async () => {
+      await launch.close();
+      return new Promise<void>((resolve, reject) => {
         stream.close();
         server.close((err) => (err ? reject(err) : resolve()));
-      }),
+      });
+    })(),
   };
 }

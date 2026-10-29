@@ -48,6 +48,14 @@ target project's root. The run must be in `execute`, with an approved current
 specification, a positive recorded token budget, accepted dependencies, and no
 blocking questions/checkpoints. The runner refuses corrupt or paused controls.
 
+## Launch from the panel
+
+Use `cw ui --enable-execution --port 47833` from the target repository (add the
+already-configured Windows sandbox selection when needed). The Mission control
+view edits and reviews a plan before explicit approval and start. Docker demos
+and panels without this option cannot launch agents. See
+[Mission control](mission-control.md) for the complete workflow and recovery.
+
 ## Execute one unit
 
 Create a linked worktree belonging to the target repository. Start from a commit
@@ -111,11 +119,19 @@ Pause/stop controls, SIGINT/SIGTERM, and worker failures stop new admission and
 interrupt active workers. Review the durable ledger, team receipt, usage and
 retained worktrees after a stop or crash. A normally settled stop also raises a
 blocking review checkpoint; inspect and resolve it before resuming. A previous
-team receipt requires manual
-recovery review; rerunning the command does not silently retry failed units,
-rework or integration. Preserve evidence and reconcile unknown usage before an
+team receipt requires explicit recovery review; rerunning the team command does
+not silently retry it. The execution-enabled panel can inspect a supported stopped
+receipt and resume after a reviewed-state token. Failed/rework tasks get new
+worktrees while previous attempts remain archived. Conflicts and unknown usage
+remain blocked for manual reconciliation. Preserve evidence and reconcile unknown usage before an
 explicit reviewed plan amendment or recovery. The scheduler does not automatically
 consume or acknowledge the operator command queue.
+
+If `verification.global_gates` is configured, a fresh read-only verifier checks
+the combined integration after all units are accepted. Passing requires actual
+evidence for every gate, no findings, known usage and an unchanged delivery.
+Failure stops the team with a recovery checkpoint. Older specs without gates
+report `not_configured`; completion does not imply combined acceptance.
 
 ## Delivery boundaries and recovery
 
@@ -142,8 +158,8 @@ consume or acknowledge the operator command queue.
   `usage_unknown`; future workers stop until an operator reconciles actual usage:
   `cw event budget.spent --data '{"tokens":123,"reconciles_execution":"EXECUTION_UUID"}'`.
   Use the execution ID in the error event and verified provider/session accounting;
-  never invent a zero or a guessed total. Failed units need an explicit reviewed
-  plan amendment/new unit; they are not silently reset to pending.
+  never invent a zero or a guessed total. Failed units need a reviewed team recovery (recording a user-authorized retry)
+  or an explicit plan amendment/new unit; they are not silently reset to pending.
 - A process crash may leave `.teamsmith/execution.lock`. Remove it only after
   confirming the owning worker and its descendants have stopped. Receipts and
   ledger appends are separate operations; a crash between them needs inspection.

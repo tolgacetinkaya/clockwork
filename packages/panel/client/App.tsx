@@ -16,6 +16,7 @@ import { Mark, Dialog } from "./ui.js";
 import { Layout } from "./layout.js";
 import { Overview } from "./overview.js";
 import { Workboard } from "./work.js";
+import { Mission } from "./mission.js";
 import { Team } from "./team.js";
 import { ActivityView } from "./activity.js";
 import { Decisions } from "./decisions.js";
@@ -119,6 +120,8 @@ export function App() {
           <>
             {view === "overview" ? (
               <Overview snapshot={snapshot} />
+            ) : view === "mission" ? (
+              <Mission snapshot={snapshot} disabled={disabled} />
             ) : view === "workboard" ? (
               <Workboard snapshot={snapshot} />
             ) : view === "team" ? (

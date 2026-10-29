@@ -102,6 +102,7 @@ export async function readPanelData(
     agent.lastEventAt = event.ts;
     if (typeof event.data?.provider === "string") agent.provider = event.data.provider;
     if (typeof event.data?.model === "string") agent.model = event.data.model;
+    if (typeof event.data?.mode === "string") agent.mode = event.data.mode;
     if (event.unit_id && !agent.units.includes(event.unit_id))
       agent.units.push(event.unit_id);
     if (event.type === "agent.completed") agent.status = "completed";
@@ -109,7 +110,7 @@ export async function readPanelData(
     if (event.type === "unit.started") agent.status = "idle";
     if (event.type === "agent.spawned")
       agent.status =
-        event.data?.mode === "verify"
+        ["verify", "integration_verify"].includes(String(event.data?.mode))
           ? "verifying"
           : event.data?.mode === "produce"
             ? "working"

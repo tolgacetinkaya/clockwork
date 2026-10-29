@@ -35,6 +35,7 @@ export const EVENT_TYPES = [
   "spec.amended",
   // unit family — mini state machine: pending → running → verifying → rework → accepted | failed
   "unit.started",
+  "unit.retry_requested",
   "unit.verify_started",
   "unit.rework",
   "unit.accepted",
@@ -137,6 +138,9 @@ function validateData(event: LedgerEvent, issues: ValidationIssue[]): void {
   }
   if (event.type.startsWith("agent.") && !isSafeId(event.agent_id)) fail(`${event.type} requires agent_id`);
   switch (event.type) {
+    case "unit.retry_requested":
+      if (event.actor !== "user" || typeof d.reason !== "string" || !d.reason.trim()) fail("Retry requires user authorization and reason");
+      break;
     case "agent.activity":
       if (typeof d.kind !== "string" || !d.kind || d.kind.length > 80 || !["started", "updated", "completed"].includes(String(d.status))) fail("Invalid agent activity");
       break;
