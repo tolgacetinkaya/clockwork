@@ -1,0 +1,29 @@
+{"seq":1,"ts":"2026-07-05T00:47:16.026Z","type":"run.started","actor":"orchestrator","data":{"run_id":"run-mdtoc-2","teamsmith_version":"0.1.0","ledger_schema_version":1}}
+{"seq":2,"ts":"2026-07-05T00:47:16.827Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"intake"}}
+{"seq":3,"ts":"2026-07-05T00:47:41.565Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"research"}}
+{"seq":4,"ts":"2026-07-05T00:47:42.343Z","type":"budget.spent","actor":"orchestrator","data":{"tokens":2000}}
+{"seq":5,"ts":"2026-07-05T00:47:55.325Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"clarify"}}
+{"seq":6,"ts":"2026-07-05T00:47:56.071Z","type":"interaction.questions_batched","actor":"orchestrator","data":{"questions":["Language: plain JS or TS?","License?","Publish to npm or local only?","Heading forms: ATX only or also setext?","TOC entries: anchor links or plain text?","Behaviour on missing file / no headings?","Input: file path only or also stdin?","Default --max-depth?"]}}
+{"seq":7,"ts":"2026-07-05T00:47:56.870Z","type":"interaction.answers_received","actor":"user","data":{"answers":["plain JS ESM, zero-dep","MIT","local only","ATX required, setext nice-to-have","GitHub-style anchor links, nested bullets","missing file: stderr + non-zero exit; no headings: nothing + exit 0","file path only","no limit by default; --max-depth N caps"]}}
+{"seq":8,"ts":"2026-07-05T00:49:10.990Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"draft"}}
+{"seq":9,"ts":"2026-07-05T00:49:44.185Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"negotiate"}}
+{"seq":10,"ts":"2026-07-05T00:49:44.969Z","type":"spec.approved","actor":"user","data":{"version":1,"budget_target":250000,"units":[{"id":"wu-core","depends_on":[]},{"id":"wu-tests-docs","depends_on":["wu-core"]}]}}
+{"seq":11,"ts":"2026-07-05T00:49:45.753Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-core","data":{"tokens":80000}}
+{"seq":12,"ts":"2026-07-05T00:49:46.561Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-tests-docs","data":{"tokens":90000}}
+{"seq":13,"ts":"2026-07-05T00:49:48.159Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"execute"}}
+{"seq":14,"ts":"2026-07-05T00:49:57.700Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-core","agent_id":"builder"}
+{"seq":15,"ts":"2026-07-05T00:49:58.518Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-core","agent_id":"builder"}
+{"seq":16,"ts":"2026-07-05T00:52:36.977Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-core","agent_id":"builder","data":{"tokens":31674}}
+{"seq":17,"ts":"2026-07-05T00:52:37.797Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-core"}
+{"seq":18,"ts":"2026-07-05T00:54:45.698Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-core","agent_id":"checker","data":{"tokens":32583}}
+{"seq":19,"ts":"2026-07-05T00:54:46.496Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-core"}
+{"seq":20,"ts":"2026-07-05T00:54:47.271Z","type":"interaction.checkpoint_raised","actor":"orchestrator","data":{"ref":"ms-wu-core","kind":"milestone","blocking":false}}
+{"seq":21,"ts":"2026-07-05T00:54:48.063Z","type":"interaction.checkpoint_resolved","actor":"orchestrator","data":{"ref":"ms-wu-core"}}
+{"seq":22,"ts":"2026-07-05T00:55:10.788Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-tests-docs","agent_id":"builder"}
+{"seq":23,"ts":"2026-07-05T00:55:11.566Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-tests-docs","agent_id":"builder"}
+{"seq":24,"ts":"2026-07-05T00:58:37.102Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-tests-docs","agent_id":"builder","data":{"tokens":38976}}
+{"seq":25,"ts":"2026-07-05T00:58:37.909Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-tests-docs"}
+{"seq":26,"ts":"2026-07-05T01:01:01.467Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-tests-docs","agent_id":"checker","data":{"tokens":40918}}
+{"seq":27,"ts":"2026-07-05T01:01:02.265Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-tests-docs"}
+{"seq":28,"ts":"2026-07-05T01:01:03.053Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"retro"}}
+{"seq":29,"ts":"2026-07-05T01:02:02.376Z","type":"run.completed","actor":"orchestrator","data":{"outcome":"done"}}

@@ -1,0 +1,35 @@
+{
+  "name": "clockwork",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clockwork": "tsx packages/cli/src/bin.ts",
+    "check:public": "node scripts/check-public-files.mjs",
+    "check": "npm run typecheck && npm test && npm run check:public"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^5.0.5"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tolgacetinkaya/clockwork.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tolgacetinkaya/clockwork/issues"
+  },
+  "description": "Task-driven AI teams with durable events, verification, and budget tracking.",
+  "engines": {
+    "node": ">=24"
+  }
+}

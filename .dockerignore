@@ -1,0 +1,13 @@
+node_modules
+.git
+.test-tmp
+**/node_modules
+**/.teamsmith
+runs
+assets
+golden-paths
+docs
+**/test
+*.log
+.env
+.env.*

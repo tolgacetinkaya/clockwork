@@ -1,0 +1,21 @@
+name: clockwork
+
+services:
+  panel:
+    build: .
+    image: clockwork-panel:local
+    init: true
+    ports:
+      - "127.0.0.1:${CLOCKWORK_PANEL_PORT:-47831}:47831"
+    environment:
+      PANEL_PORT: "47831"
+      PANEL_PROJECT_DIR: /data
+      PANEL_SEED_DIR: /seed
+    volumes:
+      - panel-data:/data
+      - ./packages/core/test/fixtures/historical/gp-1/run-3:/seed:ro
+    restart: unless-stopped
+
+volumes:
+  panel-data:
+    name: teamsmith_panel-data

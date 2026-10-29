@@ -1,0 +1,64 @@
+{"seq":1,"ts":"2026-07-06T01:02:06.093Z","type":"run.started","actor":"orchestrator","data":{"run_id":"run-gp1-url-shortener-3","teamsmith_version":"0.1.0","ledger_schema_version":1}}
+{"seq":2,"ts":"2026-07-06T01:02:06.885Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"intake"}}
+{"seq":3,"ts":"2026-07-06T01:02:38.962Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"research"}}
+{"seq":4,"ts":"2026-07-06T01:02:39.730Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"clarify"}}
+{"seq":5,"ts":"2026-07-06T01:02:40.464Z","type":"interaction.questions_batched","actor":"orchestrator","data":{"questions":["License?","Storage: SQLite or file-based; extra deps OK?","Runtime?","Slug length/charset preference?","Deployment: real Docker build/publish required?","Auth / rate limiting in MVP?","Custom slug support or random only?"]}}
+{"seq":6,"ts":"2026-07-06T01:02:41.228Z","type":"interaction.answers_received","actor":"user","data":{"answers":["MIT","File-based JSON store, zero/minimal deps, no SQLite","Node current LTS v24, ESM","random base62 7 chars, collision-retry","Local only, Dockerfile correct but real docker build optional","No auth/rate-limiting in MVP; input validation in scope","Random only for MVP"]}}
+{"seq":7,"ts":"2026-07-06T01:05:37.371Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"draft"}}
+{"seq":8,"ts":"2026-07-06T01:05:55.368Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"negotiate"}}
+{"seq":9,"ts":"2026-07-06T01:05:56.153Z","type":"spec.approved","actor":"user","data":{"version":1,"budget_target":400000,"units":[{"id":"wu-storage","depends_on":[]},{"id":"wu-api","depends_on":["wu-storage"]},{"id":"wu-frontend","depends_on":["wu-api"]},{"id":"wu-docs","depends_on":["wu-api"]},{"id":"wu-infra","depends_on":["wu-api"]},{"id":"wu-integrate","depends_on":["wu-storage","wu-api","wu-frontend","wu-docs","wu-infra"]}]}}
+{"seq":10,"ts":"2026-07-06T01:05:56.926Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-storage","data":{"tokens":50000}}
+{"seq":11,"ts":"2026-07-06T01:05:57.685Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-api","data":{"tokens":90000}}
+{"seq":12,"ts":"2026-07-06T01:05:58.479Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-frontend","data":{"tokens":45000}}
+{"seq":13,"ts":"2026-07-06T01:05:59.183Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-docs","data":{"tokens":75000}}
+{"seq":14,"ts":"2026-07-06T01:05:59.936Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-infra","data":{"tokens":75000}}
+{"seq":15,"ts":"2026-07-06T01:06:00.733Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-integrate","data":{"tokens":80000}}
+{"seq":16,"ts":"2026-07-06T01:06:47.385Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"execute"}}
+{"seq":17,"ts":"2026-07-06T01:07:19.486Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-storage","agent_id":"builder-storage-1"}
+{"seq":18,"ts":"2026-07-06T01:07:20.269Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-storage","agent_id":"builder-storage-1"}
+{"seq":19,"ts":"2026-07-06T01:09:14.503Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-storage","data":{"tokens":39904}}
+{"seq":20,"ts":"2026-07-06T01:09:15.296Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-storage"}
+{"seq":21,"ts":"2026-07-06T01:12:01.018Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-storage","data":{"tokens":44268}}
+{"seq":22,"ts":"2026-07-06T01:12:01.839Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-storage"}
+{"seq":23,"ts":"2026-07-06T01:12:02.649Z","type":"interaction.checkpoint_raised","actor":"orchestrator","data":{"ref":"ms-contract","kind":"milestone","blocking":false}}
+{"seq":24,"ts":"2026-07-06T01:12:03.422Z","type":"interaction.checkpoint_resolved","actor":"orchestrator","data":{"ref":"ms-contract"}}
+{"seq":25,"ts":"2026-07-06T01:12:33.301Z","type":"spec.amended","actor":"system","data":{"from_version":1,"to_version":2,"initiated_by":"system","reason":"wu-storage spend (84172 tokens: 39904 producer + 44268 verifier) exceeded its budget_est (50000) by 68%, over the 50% system-amendment trigger. Root cause: the adversarial verifier ran a genuinely thorough real-process check (spawned separate node processes for cross-process persistence, 20k-iteration uniqueness sweep, concurrent-write stress) matching the run's `thorough` bias - this is real, justified verification cost, not waste. Re-baselining wu-storage's estimate to actual so downstream budget deltas stay meaningful signal instead of noise, per orchestrator convention (target/ceiling/estimate share one convention).\n","units":[{"id":"wu-storage"},{"id":"wu-api","depends_on":["wu-storage"]},{"id":"wu-frontend","depends_on":["wu-api"]},{"id":"wu-docs","depends_on":["wu-api"]},{"id":"wu-infra","depends_on":["wu-api"]},{"id":"wu-integrate","depends_on":["wu-storage","wu-api","wu-frontend","wu-docs","wu-infra"]}],"cancelled":[]}}
+{"seq":26,"ts":"2026-07-06T01:12:57.797Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-api","agent_id":"builder-api-1"}
+{"seq":27,"ts":"2026-07-06T01:12:58.553Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-api","agent_id":"builder-api-1"}
+{"seq":28,"ts":"2026-07-06T01:15:22.343Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-api","data":{"tokens":43186}}
+{"seq":29,"ts":"2026-07-06T01:15:23.133Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-api"}
+{"seq":30,"ts":"2026-07-06T01:17:58.676Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-api","data":{"tokens":50514}}
+{"seq":31,"ts":"2026-07-06T01:17:59.462Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-api"}
+{"seq":32,"ts":"2026-07-06T01:18:23.988Z","type":"budget.estimated","actor":"orchestrator","unit_id":"wu-storage","data":{"tokens":84000}}
+{"seq":33,"ts":"2026-07-06T01:18:37.166Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-frontend","agent_id":"builder-frontend-1"}
+{"seq":34,"ts":"2026-07-06T01:18:37.927Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-frontend","agent_id":"builder-frontend-1"}
+{"seq":35,"ts":"2026-07-06T01:18:38.697Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-docs","agent_id":"builder-docs-1"}
+{"seq":36,"ts":"2026-07-06T01:18:39.464Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-docs","agent_id":"builder-docs-1"}
+{"seq":37,"ts":"2026-07-06T01:18:40.213Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-infra","agent_id":"builder-infra-1"}
+{"seq":38,"ts":"2026-07-06T01:18:40.983Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-infra","agent_id":"builder-infra-1"}
+{"seq":39,"ts":"2026-07-06T01:21:58.234Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-frontend","data":{"tokens":39565}}
+{"seq":40,"ts":"2026-07-06T01:21:59.027Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-docs","data":{"tokens":45362}}
+{"seq":41,"ts":"2026-07-06T01:21:59.794Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-infra","data":{"tokens":38336}}
+{"seq":42,"ts":"2026-07-06T01:22:00.568Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-frontend"}
+{"seq":43,"ts":"2026-07-06T01:22:01.353Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-docs"}
+{"seq":44,"ts":"2026-07-06T01:22:02.103Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-infra"}
+{"seq":45,"ts":"2026-07-06T01:24:35.290Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-frontend","data":{"tokens":40798}}
+{"seq":46,"ts":"2026-07-06T01:24:36.051Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-docs","data":{"tokens":41456}}
+{"seq":47,"ts":"2026-07-06T01:24:36.812Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-infra","data":{"tokens":37782}}
+{"seq":48,"ts":"2026-07-06T01:24:37.579Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-frontend"}
+{"seq":49,"ts":"2026-07-06T01:24:38.351Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-docs"}
+{"seq":50,"ts":"2026-07-06T01:24:39.123Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-infra"}
+{"seq":51,"ts":"2026-07-06T01:25:55.612Z","type":"budget.exhausted","actor":"orchestrator","data":{"spent":421171,"target":400000,"ceiling":480000,"remaining_to_ceiling":58829,"next_unit":"wu-integrate","next_unit_estimate":80000,"reason":"pre-spawn check: wu-integrate estimate does not fit remaining ceiling headroom; thorough-bias verification on accepted units (esp. wu-frontend +79%, wu-docs +16%) ran the target out before the mandatory integration unit started"}}
+{"seq":52,"ts":"2026-07-06T01:25:56.368Z","type":"interaction.checkpoint_raised","actor":"orchestrator","data":{"ref":"ms-budget-exhausted","kind":"budget","blocking":true}}
+{"seq":53,"ts":"2026-07-06T01:26:28.260Z","type":"interaction.checkpoint_resolved","actor":"user","data":{"ref":"ms-budget-exhausted","decision":"proceed","note":"Approve running wu-integrate to completion despite exceeding the 400000 target: only the mandatory integration+e2e unit remains, overage traces to legitimate thorough-bias verification depth (not scope creep), and thorough bias was explicitly chosen at intake. Ceiling raised operationally to 520000 for this run via guard.budget.ceiling; the ORIGINAL 400000 target remains the figure all deviation percentages are measured against per convention. Known limitation: the amend CLI only supports work_unit changes, not priorities.budget_target, so there is no ledger-native way to raise the recorded target itself."}}
+{"seq":54,"ts":"2026-07-06T01:26:36.698Z","type":"unit.started","actor":"orchestrator","unit_id":"wu-integrate","agent_id":"integrator-1"}
+{"seq":55,"ts":"2026-07-06T01:26:37.497Z","type":"agent.spawned","actor":"orchestrator","unit_id":"wu-integrate","agent_id":"integrator-1"}
+{"seq":56,"ts":"2026-07-06T01:28:56.893Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-integrate","data":{"tokens":50164}}
+{"seq":57,"ts":"2026-07-06T01:28:57.657Z","type":"unit.verify_started","actor":"orchestrator","unit_id":"wu-integrate"}
+{"seq":58,"ts":"2026-07-06T01:32:07.888Z","type":"budget.spent","actor":"orchestrator","unit_id":"wu-integrate","data":{"tokens":50046}}
+{"seq":59,"ts":"2026-07-06T01:32:08.715Z","type":"unit.accepted","actor":"orchestrator","unit_id":"wu-integrate"}
+{"seq":60,"ts":"2026-07-06T01:32:09.527Z","type":"interaction.checkpoint_raised","actor":"orchestrator","data":{"ref":"ms-integration","kind":"milestone","blocking":false}}
+{"seq":61,"ts":"2026-07-06T01:32:10.351Z","type":"interaction.checkpoint_resolved","actor":"orchestrator","data":{"ref":"ms-integration"}}
+{"seq":62,"ts":"2026-07-06T01:32:23.447Z","type":"run.phase_entered","actor":"orchestrator","data":{"phase":"retro"}}
+{"seq":63,"ts":"2026-07-06T01:32:45.468Z","type":"run.completed","actor":"orchestrator","data":{"outcome":"done"}}
+{"seq":64,"ts":"2026-07-06T01:35:37.271Z","type":"budget.spent","actor":"orchestrator","data":{"tokens":12000,"note":"orchestrator coordination overhead (self-estimate, not harness-reported): spec drafting, 4 guard flips, one amendment, budget checkpoint handling, worktree seeding/sweeping"}}

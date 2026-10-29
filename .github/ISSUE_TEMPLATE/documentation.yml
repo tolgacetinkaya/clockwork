@@ -1,0 +1,17 @@
+name: Documentation improvement
+description: Report unclear, missing, or outdated documentation.
+title: "[Docs]: "
+labels: ["type:docs", "status:triage"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Document or section
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: What is unclear and how should it change?
+    validations:
+      required: true

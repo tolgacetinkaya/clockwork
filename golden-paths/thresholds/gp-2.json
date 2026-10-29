@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "golden_path": "gp-2",
+  "source": "gp-2-cli-tool.md",
+  "mechanical": {
+    "required_outcome": "done",
+    "max_interventions_execute": 1,
+    "max_budget_deviation_pct": 25,
+    "max_anomalies": 0,
+    "max_ledger_errors": 0,
+    "team": {
+      "max_units": 3,
+      "max_agents": 2
+    }
+  },
+  "manual": [
+    "All acceptance criteria pass (verifier-confirmed) — 100%",
+    "mdtoc works end to end on a sample file — required",
+    "Repeatability — >= 2 of 3 runs pass (cross-run signal, not evaluable from a single evidence bundle)",
+    "Draft playbook produced with provenance: auto-draft — required (lives under assets/playbooks/, outside the evidence bundle)"
+  ]
+}

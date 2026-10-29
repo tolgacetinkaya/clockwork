@@ -1,0 +1,5 @@
+{
+  "name": "clockwork",
+  "description": "Forge dynamic agent teams at runtime: decompose the work, staff a team, enforce boundaries with hooks, verify adversarially, learn from every run.",
+  "version": "0.1.0"
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "golden_path": "gp-1",
+  "source": "gp-1-url-shortener.md",
+  "mechanical": {
+    "required_outcome": "done",
+    "max_interventions_execute": 3,
+    "max_budget_deviation_pct": 40,
+    "max_anomalies": 0,
+    "max_ledger_errors": 0
+  },
+  "manual": [
+    "All acceptance criteria pass (verifier-confirmed) — 100%",
+    "App runs: POST /shorten + GET /:slug round-trip works locally — required",
+    "Repeatability — >= 2 of 3 runs pass (cross-run signal, not evaluable from a single evidence bundle)",
+    "Resume — killing the session mid-EXECUTE and restarting continues without redoing accepted units or re-asking questions (exercised on run 2 of the protocol, not every run)"
+  ]
+}

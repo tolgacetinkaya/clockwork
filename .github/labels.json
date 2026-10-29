@@ -1,0 +1,102 @@
+[
+  {
+    "name": "type:bug",
+    "color": "d73a4a",
+    "description": "Incorrect behavior or regression"
+  },
+  {
+    "name": "type:feature",
+    "color": "a2eeef",
+    "description": "New behavior or capability"
+  },
+  {
+    "name": "type:docs",
+    "color": "0075ca",
+    "description": "Documentation improvement"
+  },
+  {
+    "name": "type:maintenance",
+    "color": "bfd4f2",
+    "description": "Tooling, dependencies, or maintenance"
+  },
+  {
+    "name": "area:core",
+    "color": "5319e7",
+    "description": "Specifications, ledger, budget, and queue"
+  },
+  {
+    "name": "area:adapter-claude",
+    "color": "5319e7",
+    "description": "Claude Code execution integration"
+  },
+  {
+    "name": "area:cli",
+    "color": "5319e7",
+    "description": "Command-line interface"
+  },
+  {
+    "name": "area:panel",
+    "color": "5319e7",
+    "description": "Local management panel"
+  },
+  {
+    "name": "area:ci",
+    "color": "5319e7",
+    "description": "CI and repository automation"
+  },
+  {
+    "name": "area:dependencies",
+    "color": "5319e7",
+    "description": "Dependency updates"
+  },
+  {
+    "name": "priority:critical",
+    "color": "b60205",
+    "description": "Confirmed release-blocking security or integrity issue"
+  },
+  {
+    "name": "priority:high",
+    "color": "d93f0b",
+    "description": "High-impact issue"
+  },
+  {
+    "name": "priority:normal",
+    "color": "fbca04",
+    "description": "Normal priority"
+  },
+  {
+    "name": "priority:low",
+    "color": "c2e0c6",
+    "description": "Lower priority"
+  },
+  {
+    "name": "status:triage",
+    "color": "ededed",
+    "description": "Needs maintainer classification"
+  },
+  {
+    "name": "status:ready",
+    "color": "0e8a16",
+    "description": "Reproduced or scoped and ready"
+  },
+  {
+    "name": "status:in-progress",
+    "color": "1d76db",
+    "description": "Actively being worked on"
+  },
+  {
+    "name": "status:blocked",
+    "color": "e4e669",
+    "description": "Waiting on a stated dependency"
+  },
+  {
+    "name": "good first issue",
+    "color": "7057ff",
+    "description": "Clearly scoped contribution for a newcomer"
+  },
+  {
+    "name": "skip-changelog",
+    "color": "ffffff",
+    "description": "Exclude from generated release notes"
+  }
+]

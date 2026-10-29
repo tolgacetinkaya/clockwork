@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "golden_path": "gp-3",
+  "source": "gp-3-brownfield.md",
+  "mechanical": {
+    "required_outcome": "done",
+    "max_interventions_execute": 3,
+    "max_budget_deviation_pct": 40,
+    "max_anomalies": 0,
+    "max_ledger_errors": 0
+  },
+  "manual": [
+    "All acceptance criteria pass (verifier-confirmed) — 100%",
+    "App runs: new stats flow works end to end (POST /shorten -> GET /:slug increments -> GET /api/stats/:slug reflects it) — required",
+    "Regression gate: pre-existing test suite passes UNMODIFIED at RETRO (same file contents as the baseline, or any edit explicitly disclosed and justified) — required, 0 undisclosed edits",
+    "Baseline first: INTAKE records the existing suite's pass/fail state before any file is touched (in meta.assumptions, before DRAFT) — required",
+    "Existing-behavior contract: POST /shorten and GET /:slug produce byte-identical responses to the run-3 README's documented cases for inputs that worked before — required, 0 deviations",
+    "Repeatability — >= 2 of 3 runs pass (cross-run signal, not evaluable from a single evidence bundle)"
+  ]
+}

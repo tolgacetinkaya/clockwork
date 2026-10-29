@@ -1,0 +1,21 @@
+{
+  "name": "@clockwork/adapter-claude",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@clockwork/core": "*",
+    "yaml": "^2.6.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tolgacetinkaya/clockwork.git",
+    "directory": "packages/adapter-claude"
+  },
+  "bugs": {
+    "url": "https://github.com/tolgacetinkaya/clockwork/issues"
+  }
+}

@@ -1,0 +1,30 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.log
+.test-tmp/
+# Local orchestration state and machine-specific evidence
+.teamsmith/
+.teamsmith-worktrees/
+.clockwork/
+.clockwork-worktrees/
+/runs/
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.claude/
+.codex/
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - name: Audit dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --audit-level=high
+
+  docker:
+    name: Docker smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and start the demo
+        run: docker compose up -d --build --wait --wait-timeout 90
+      - name: Check panel and recorded state
+        run: |
+          curl --fail --silent --output /tmp/clockwork-panel.html http://127.0.0.1:47831/
+          grep -q 'Clockwork' /tmp/clockwork-panel.html
+          curl --fail --silent http://127.0.0.1:47831/api/state | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["runId"] == "run-gp1-url-shortener-3"; assert s["outcome"] == "done"'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Clean up disposable CI data
+        if: always()
+        run: docker compose down --volumes
