@@ -53,3 +53,14 @@ Added original transparent rabbit and red-panda artwork. Six roster identities r
 Validation: client/server type checks, 10 focused projection/render tests, public-file checks and Docker production build passed. Browser measurements at widths 3778, 1920, 1440, 768 and 390 showed no page overflow; 1920 renders six cards on one row, 1440 three per row, 768 two, and 390 one. Mobile task drawer and Escape close passed. All six production portraits loaded and the production tab had no console warnings/errors. Docker is healthy; six persistent files have the same data hash before and after the update.
 
 Follow-up result: passed. Evidence: `arcade-responsive-team.png` in the local QA artifact folder.
+
+
+## Motion and gamification follow-up
+
+Added Motion for React 14.7.1: shared reduced-motion and document-visibility policy, cosmetic portrait breathing, identity-keyed crew entrance, spring task/platform selection, tap/hover feedback, state-color transitions and inspector transitions. Activity rings only animate for recorded working/verifying tasks in an active live workspace. The companion has idle/working/verifying behaviors, event-based alert/success reactions and an accessible click/Enter/Space interaction with a jump and short heart/sparkle burst. Initial or replayed historic outcomes do not trigger success reactions. All variants retain original raster artwork; these are 2D motion puppets, not newly rigged 3D characters.
+
+React review: stable identity keys, shared visibility subscription with cleanup, no new polling/fetching, no per-frame React state updates, accessible native buttons, hidden decorative particles, and preserved localized text. Reduced-motion removes transforms and particle bursts; hidden documents suspend loops. Pure state tests cover disabled motion and historical-vs-explicit celebration policy. Browser system preference emulation was not performed.
+
+Validation: both server and client type checks, all 134 panel tests across 20 files, public-file checks and Docker production build passed. Browser verified moving transform values over time, three particles after click/Enter, task inspector selection, no activity ring in recorded demo, 1440px and 390px layouts, and no console errors/warnings. Initial JS bundle increased from approximately 138KB to 185KB gzip; Vite reports its default uncompressed 500KB chunk-size advisory. No network animation assets or extra backend subscriptions are needed. License notices ship with panel assets.
+
+Motion follow-up result: passed. Evidence: `arcade-motion.png` in the local QA artifact folder. Browser verification used the recorded demo; actual live state behavior is validated by existing companion-state and motion policy tests.

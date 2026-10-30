@@ -12,6 +12,8 @@ describe("companion interface", () => {
         expect(html).toContain('aria-expanded="false"');
         expect(html).toContain('aria-live="polite"></span>');
         expect(html).toContain('<img');
+        expect(html).toContain('class="cw-pet-play"');
+        expect(html).toContain('aria-label="Piko');
     });
     it("translates all state messages in every supported non-English locale", () => {
         for (const catalog of Object.values(petMessages)) {
