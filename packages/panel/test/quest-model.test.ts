@@ -18,12 +18,29 @@ describe("quest route projection", () => {
  it("does not show delivery badges for accepted state lacking independent evidence", () => {
   expect(questDeliveries({...base,state:{...state,units:{a:{...unit(),status:"accepted"}}}})).toEqual([]);
  });
- it("uses stable identity-based raster portraits without implying a different role", () => {
-  const agent = {id:"agent-a",purpose:null,modelTier:null,status:"idle" as const,units:[],lastEventAt:null};
-  expect(crewPortrait(base,agent)).toBe(crewPortrait(base,{...agent,mode:"verify"}));
-  const portraits = ["agent-a","agent-b","agent-c"].map(id => crewPortrait(base,{...agent,id}));
-  expect(new Set(portraits).size).toBe(3);
-  expect(portraits.every(path => /\/(fox|owl|turtle)\.png$/.test(path))).toBe(true);
+ it("assigns six distinct portraits independent of roster ordering, status or role", () => {
+  const ids = ["builder-1", "builder-2", "builder-3", "verifier-1", "verifier-2", "integration-reviewer"];
+  const agents = ids.map(id => ({id,purpose:null,modelTier:null,status:"idle" as const,units:[],lastEventAt:null}));
+  const snapshot = {...base,agents};
+  const before = Object.fromEntries(agents.map(agent => [agent.id,crewPortrait(snapshot,agent)]));
+  expect(new Set(Object.values(before)).size).toBe(6);
+  expect(new Set(Object.values(before))).toEqual(new Set(["fox","owl","turtle","puffin","rabbit","red-panda"].map(name => `/assets/arcade/${name}.png`)));
+  const changed = {...snapshot,agents:[...agents].reverse().map(agent => ({...agent,status:"verifying" as const,mode:"verify"}))};
+  for (const agent of changed.agents) expect(crewPortrait(changed,agent)).toBe(before[agent.id]);
+ });
+ it("provides a deterministic fallback for missing roster identities and repeats only beyond six", () => {
+  const agent = (id:string) => ({id,purpose:null,modelTier:null,status:"idle" as const,units:[],lastEventAt:null});
+  expect(crewPortrait(base,agent("missing"))).toBe("/assets/arcade/fox.png");
+  const agents = ["builder-1","builder-2","builder-3"].map(agent);
+  const snapshot = {...base,agents};
+  const missing = crewPortrait(snapshot,agent("not-in-roster"));
+  expect(agents.map(member => crewPortrait(snapshot,member))).not.toContain(missing);
+  expect(crewPortrait({...snapshot,agents:[...agents].reverse()},agent("not-in-roster"))).toBe(missing);
+  const larger = {...base,agents:Array.from({length:8},(_,index)=>agent(`agent-${index}`))};
+  const portraits = larger.agents.map(member=>crewPortrait(larger,member));
+  expect(new Set(portraits.slice(0,6)).size).toBe(6);
+  expect(portraits[6]).toBe(portraits[0]);
+  expect(portraits[7]).toBe(portraits[1]);
  });
  it("keeps mission headings to the first concise clause", () => {
   expect(questTitle("URL shortener: implement storage, endpoints and documentation")).toBe("URL shortener");

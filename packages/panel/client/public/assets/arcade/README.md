@@ -5,6 +5,8 @@ Original AI-generated raster artwork created for Clockwork from the selected Mis
 - `fox.png`: Nova, lilac origami fox.
 - `owl.png`: Kara, cream origami owl.
 - `turtle.png`: Moss, lime/olive origami turtle.
+- `rabbit.png`: cyan origami rabbit with long ears and a round cream tail.
+- `red-panda.png`: coral origami red panda with round ears and a cream-ringed tail.
 - `puffin.png`: Piko, graphite puffin with orange beak and wind-up crest.
 - `platform.png`: neutral task platform; CSS tint reflects recorded task state.
 - `quest-terrain.png`: decorative rocky landscape.

@@ -31,7 +31,7 @@ export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
       <h2>{t("The crew, at a glance")}</h2>
       <p className="small-muted">{t("Badges count unique accepted tasks with producer and independent verifier evidence in the latest {count} recorded events. They do not imply integration or combined verification passed.", { count: snapshot.events.length })}</p>
       {agents.length ? <div className={`crew-lanes ${flag ? "crew-recorded" : ""}`}>
-        {lanes.map((lane) => <section className="crew-lane" key={lane}><h3>{t(lane)}</h3>
+        {lanes.map((lane) => <section className="crew-lane" key={lane}><h3>{t(lane)}</h3><div className="crew-cards">
           {agents.filter((agent) => laneOf(agent) === lane).map((agent) => {
             const evidence = contributions.get(agent.id);
             const role = crewRole(snapshot, agent);
@@ -52,7 +52,7 @@ export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
             </article>;
           })}
           {!agents.some((agent) => laneOf(agent) === lane) ? <p className="small-muted">{t("No recorded crew in this stage.")}</p> : null}
-        </section>)}
+        </div></section>)}
       </div> : <Empty title={t("The team takes shape with the work")}>{t("Agent events and assignments will appear when an orchestrator starts a run.")}</Empty>}
     </section>
     {agents.length ? <details className="surface crew-technical"><summary>{t("Agent details")}</summary><div className="agent-grid">

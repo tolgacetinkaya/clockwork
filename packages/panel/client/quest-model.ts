@@ -15,10 +15,16 @@ export function questUnits(snapshot: PanelSnapshot) {
 export function questDeliveries(snapshot: PanelSnapshot) {
   return [...new Set([...crewContributions(snapshot).values()].flatMap(value => value.deliveries))];
 }
-/** Portrait identity is decorative; true role labels are independent of species. */
-export function crewPortrait(_snapshot: PanelSnapshot, agent: PanelAgent) {
-  const hash = [...agent.id].reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 0);
-  return `/assets/arcade/${["fox", "owl", "turtle"][hash % 3]}.png`;
+/** Decorative species follow sorted roster identities, never role or status.
+ * The first six identities are distinct; larger rosters repeat the palette.
+ * A caller absent from the roster gets the next slot without remapping the roster.
+ */
+export function crewPortrait(snapshot: PanelSnapshot, agent: PanelAgent) {
+  const portraits = ["fox", "owl", "turtle", "puffin", "rabbit", "red-panda"];
+  const identities = [...new Set(snapshot.agents.map(member => member.id))].sort();
+  const rosterIndex = identities.indexOf(agent.id);
+  const index = rosterIndex < 0 ? identities.length : rosterIndex;
+  return `/assets/arcade/${portraits[index % portraits.length]}.png`;
 }
 export function concise(value: string, limit = 72) {
   return value.length > limit ? `${value.slice(0, limit - 1).trimEnd()}…` : value;

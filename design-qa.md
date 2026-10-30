@@ -42,3 +42,14 @@ Evidence captures are kept in the local QA artifact folder: `arcade-desktop.png`
 Browser acceptance used the recorded demo, not a new paid/live agent execution. Existing automated transport and state tests cover ordering, reconnect admission and evidence rules; no claim of a new end-to-end Codex execution is made. Companion movement is state-driven 2D animation, not a native desktop pet application.
 
 Final result: passed. Final production recapture shows all six route nodes in one row at 1280 pixels, the inspector and companion at 1440x1024, and no console warnings or errors.
+
+
+## Responsive and roster follow-up
+
+The user reported large side gutters on an ultrawide monitor and repeated crew portraits. Removed the 1800px content cap and inherited centering. The crew heading now sits outside the card grid, so spanning headings cannot keep empty columns alive. Recorded crew uses six columns on wide screens, three on laptops, two on tablets and one on phones; fewer cards can expand into unused tracks. Task titles and descriptions now have separate block styling. Crew portraits are larger.
+
+Added original transparent rabbit and red-panda artwork. Six roster identities receive six distinct portraits shared by Team and Overview, independent of activity ordering or role/status changes. Rosters larger than six reuse the palette; changes in roster membership can change the deterministic allocation. Species do not imply agent roles.
+
+Validation: client/server type checks, 10 focused projection/render tests, public-file checks and Docker production build passed. Browser measurements at widths 3778, 1920, 1440, 768 and 390 showed no page overflow; 1920 renders six cards on one row, 1440 three per row, 768 two, and 390 one. Mobile task drawer and Escape close passed. All six production portraits loaded and the production tab had no console warnings/errors. Docker is healthy; six persistent files have the same data hash before and after the update.
+
+Follow-up result: passed. Evidence: `arcade-responsive-team.png` in the local QA artifact folder.

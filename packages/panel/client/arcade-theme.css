@@ -50,7 +50,7 @@ button:disabled { opacity: .5; }
 .connection-stale, .connection-reconnecting { color: #edbe7d; }
 .operator-avatar { background: #36323f; color: #dbcdf6; border-color: #4b435b; height: 34px; width: 34px; }
 .topbar-divider { background: var(--cw-border); }
-main#main-content { max-width: 1800px; padding: 0 24px 0 0; }
+main#main-content { max-width: none; margin: 0; min-width: 0; padding: 0 24px 0 0; }
 .context-bar { min-height: 48px; border-bottom: 1px solid #33343b; letter-spacing: .4px; font-size: 10px; color: var(--cw-muted); gap: 12px; }
 .context-dot { background: #aca2bf; }
 .context-run { max-width: 220px; color: #b6b6c4; }
@@ -165,3 +165,47 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .quest-route { background-size: 100% 100%; }
 @media(min-width:1151px) and (max-width:1499px) { .quest-route-track { grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); } }
+
+/* Let the workspace use the monitor; keep readable line lengths inside cards. */
+.view-team .page-heading { padding: 24px 0 14px; }
+.view-team .team-summary { margin: 16px 0; }
+.crew-recorded > .crew-lane { display: block; }
+.crew-lane > h3 { margin: 0 0 14px; }
+.crew-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.crew-recorded .crew-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, max(240px, calc((100% - 32px) / 3 - 1px))), 1fr)); }
+.crew-cards > .crew-member { min-width: 0; margin: 0; padding: 20px; }
+.crew-member-header { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 6px 14px; align-items: center; }
+.crew-member-header .crew-portrait { width: 100px; height: 110px; grid-row: 1 / 3; }
+.crew-member-header .crew-role { align-self: end; font-size: 13px; }
+.crew-member-header > .small-muted, .crew-member-header > .status { align-self: start; font-size: 11px; }
+.crew-mission-description { display: block; overflow: visible; }
+.crew-mission-description > strong { display: block; margin-bottom: 8px; font-size: 18px; line-height: 1.3; }
+.crew-mission-description > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: 13px; font-weight: 400; line-height: 1.6; color: var(--cw-muted); }
+.crew-mission > small { margin-top: 6px; }
+.crew-member .crew-provider { margin-top: 16px; }
+.crew-member > p { max-width: 65ch; }
+@media (min-width: 1900px) {
+  .quest-platform { width: 160px; height: 135px; }
+  .quest-node strong { font-size: 17px; }
+  .quest-route-arrow { top: 55px; }
+  .quest-crew-card > img { width: 145px; height: 170px; }
+}
+@media (max-width: 1000px) {
+  .crew-lanes { grid-template-columns: 1fr; }
+  .crew-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+}
+@media (max-width: 520px) {
+  .crew-member-header { grid-template-columns: 85px minmax(0, 1fr); }
+  .crew-member-header .crew-portrait { width: 85px; height: 95px; }
+  .crew-cards > .crew-member { padding: 16px; }
+}
+
+@media (min-width: 1800px) {
+  .crew-recorded .crew-cards { grid-template-columns: repeat(auto-fit, minmax(calc((100% - 80px) / 6 - 1px), 1fr)); }
+}
+@media (min-width: 600px) and (max-width: 1000px) {
+  .crew-recorded .crew-cards { grid-template-columns: repeat(auto-fit, minmax(calc((100% - 16px) / 2 - 1px), 1fr)); }
+}
+@media (max-width: 599px) {
+  .crew-recorded .crew-cards { grid-template-columns: minmax(0, 1fr); }
+}
