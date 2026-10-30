@@ -87,3 +87,15 @@ describe("workspace execution guard", () => {
     expect(workspaceHasExecution({ ...base, state: { ...base.state, units: { task: { ...base.state.units.task!, status: "accepted" } } } })).toBe(true);
   });
 });
+
+
+it("round-trips editable generated assumptions and unresolved questions while preserving advanced settings", () => {
+  const generated = planSpec("Audit", [task], 10000, "read report");
+  generated.meta.constraints = ["Keep existing APIs\nNo migrations"]; generated.meta.assumptions = ["Initial assumption"]; generated.meta.open_questions = ["Initial question"];
+  generated.work_units[0]!.type = "research"; generated.agents[0]!.capabilities = { tools: ["inspect"] };
+  const edited = planSpec("Audit", restoredTasks(generated), 10000, "read report", undefined, generated, { assumptions: ["Confirmed scope"], open_questions: [] });
+  expect(edited.meta).toEqual({ goal: "Audit", constraints: ["Keep existing APIs\nNo migrations"], assumptions: ["Confirmed scope"], open_questions: [] });
+  expect(edited.work_units).toEqual(generated.work_units);
+  expect(edited.agents).toEqual(generated.agents);
+  expect(generated.meta.open_questions).toEqual(["Initial question"]);
+});

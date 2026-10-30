@@ -19,6 +19,7 @@ import YAML from "yaml";
 import {
   atomicWrite,
   modelIdSchema,
+  validatePlanningInput,
   withStorageLock,
   buildAgentDefinition,
   buildUnitPrompt,
@@ -62,13 +63,13 @@ import {
   writeRetroRecord,
   writeSpecFile,
 } from "@clockwork/core";
-import type { EventType, LedgerEvent, RunState, Spec } from "@clockwork/core";
+import type { EventType, LedgerEvent, RunState, Spec, GoalPlanningInput } from "@clockwork/core";
 import {
   validConfig,
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
 import { CodexAdapter } from "@clockwork/adapter-codex";
-import { inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
+import { generateGoalPlan, inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
 
 const TS_DIR = ".teamsmith";
 const LEDGER = "ledger.jsonl";
@@ -447,7 +448,7 @@ async function cmdRecall(cwd: string, args: ParsedArgs): Promise<CliResult> {
 
 /** Role-specific defaults; an explicit selection in the approved spec takes priority. */
 function executionModelFlags(args: ParsedArgs) {
-  const names = ["model", "producer-model", "verifier-model", "integration-verifier-model"] as const;
+  const names = ["model", "producer-model", "verifier-model", "integration-verifier-model", "planner-model"] as const;
   const pattern = new RegExp(modelIdSchema.pattern, "u");
   for (const name of names) {
     const value = args.flags[name];
@@ -460,6 +461,36 @@ function executionModelFlags(args: ParsedArgs) {
     verifierModel: args.flags["verifier-model"],
     integrationVerifierModel: args.flags["integration-verifier-model"],
   };
+}
+
+/** Make selected host defaults visible in the proposed plan before approval. */
+function planningInput(input: GoalPlanningInput, models: ReturnType<typeof executionModelFlags>): GoalPlanningInput {
+  const producer = input.execution?.producer_model ?? models.producerModel ?? models.model;
+  const verifier = input.execution?.verifier_model ?? models.verifierModel ?? models.model;
+  const final = input.execution?.integration_verifier_model ?? models.integrationVerifierModel ?? verifier;
+  const execution = { ...(producer ? { producer_model: producer } : {}), ...(verifier ? { verifier_model: verifier } : {}), ...(final ? { integration_verifier_model: final } : {}) };
+  return validatePlanningInput({ ...input, ...(Object.keys(execution).length ? { execution } : {}) });
+}
+
+async function cmdPlan(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const models = executionModelFlags(args);
+  if (args.positional.length || !args.flags.goal || args.flags.goal === "true" || args.flags.budget === undefined || args.flags.constraints === "true")
+    return fail('usage: clockwork plan --goal "Your target" --budget 100000 [--constraints "Boundaries" --planner-model ID]');
+  const input = planningInput({ goal: args.flags.goal, ...(args.flags.constraints !== undefined ? { constraints: args.flags.constraints } : {}), budget: parseBudget(args.flags.budget) }, models);
+  const timeoutMs = args.flags["timeout-ms"] === undefined ? 900000 : Number(args.flags["timeout-ms"]);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3600000) return fail("timeout-ms must be between 1000 and 3600000");
+  const windowsSandbox = args.flags["windows-sandbox"];
+  if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt);
+  try {
+    const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
+    const result = await generateGoalPlan({ project: cwd, input, adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs }, signal: controller.signal });
+    return ok(JSON.stringify(result, null, 2));
+  } finally {
+    process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
+  }
 }
 
 async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
@@ -476,6 +507,7 @@ async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
   if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
   const adapter = enabled ? new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }) : undefined;
   const execution = adapter ? {
+    plan: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => generateGoalPlan({ ...options, input: planningInput(options.input, models), adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs } }),
     run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
     inspect: (project: string) => inspectTeamRecovery(project, models),
     resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => resumeTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
@@ -746,6 +778,7 @@ async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
 const USAGE = `clockwork <command>
 
   init                          create .teamsmith/
+  plan --goal TEXT --budget N   propose a goal-driven team; does not execute tasks
   event <type> [flags]          append a ledger event (--actor --unit --agent --data)
   state                         print derived run state (JSON)
   status                        human-readable run summary + budget
@@ -769,6 +802,7 @@ const USAGE = `clockwork <command>
   doctor                        environment and ledger self-check
 
 Model defaults for codex and ui --enable-execution:
+  --planner-model ID            goal planning model (falls back to --model)
   --model ID                    fallback for both roles
   --producer-model ID           production default
   --verifier-model ID           independent review default
@@ -812,6 +846,8 @@ export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
         return await setControl(cwd, { paused: false, kill: true });
       case "retro":
         return await cmdRetro(cwd, args);
+      case "plan":
+        return await cmdPlan(cwd, args);
       case "ui":
         return await cmdUi(cwd, args);
       case "recall":

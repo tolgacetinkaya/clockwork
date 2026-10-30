@@ -46,6 +46,14 @@ export function buildUnitPrompt(
 ## Project goal
 ${spec.meta.goal}
 
+## User constraints
+${list(spec.meta.constraints)}
+These user constraints govern the work and take precedence over assumptions.
+
+## Approved assumptions
+${list(spec.meta.assumptions)}
+Do not treat assumptions as permission to override user constraints.
+
 ## Your role
 ${agent.purpose}
 
@@ -89,6 +97,14 @@ export function buildVerifierPrompt(spec: Spec, unitId: string): string {
 
 ## Project goal
 ${spec.meta.goal}
+
+## User constraints
+${list(spec.meta.constraints)}
+These user constraints govern the work and take precedence over assumptions.
+
+## Approved assumptions
+${list(spec.meta.assumptions)}
+Do not treat assumptions as permission to override user constraints.
 
 ## Mandate
 You are an independent, adversarial verifier. The producer claims this unit is

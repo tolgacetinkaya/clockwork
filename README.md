@@ -27,6 +27,7 @@ Implemented:
 - A local management panel with reviewed mission launch, controlled recovery,
   crew contribution badges, dependency waiting reasons, and a durable command queue.
 - Fresh whole-project verification of the integrated result against configured gates.
+- Goal-driven task and team proposals with explicit review before execution. See [goal planning](docs/goal-planning.md).
 - Separate production and independent review model selections. See [model review](docs/model-review.md).
 - Task watchdogs, durable report acknowledgements and explicit recovery blocking.
   See [task watchdog](docs/task-watchdog.md).

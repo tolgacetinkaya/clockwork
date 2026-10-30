@@ -4,11 +4,12 @@ const exec = promisify(execFile);
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { assertStorageFile, atomicWrite, LedgerWriter, loadLatestSpec, parseBudget, readLedger, reduceLedger, validateSpec, withStorageLock, writeSpecFile } from "@clockwork/core";
-import type { ExecutionReport } from "@clockwork/core";
+import { assertStorageFile, atomicWrite, LedgerWriter, loadLatestSpec, parseBudget, readLedger, reduceLedger, validatePlanningInput, validatePlanningReceipt, validateSpec, withStorageLock, writeSpecFile } from "@clockwork/core";
+import type { ExecutionReport, GoalPlan, GoalPlanningInput, Spec } from "@clockwork/core";
 import type { LaunchState } from "./protocol.js";
 
 export interface PanelExecution {
+  plan?: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => Promise<GoalPlan & { usage: { input: number; cached: number; output: number }; provider: string; model?: string; head: string }>;
   run: (options: { project: string; concurrency: number; signal: AbortSignal }) => Promise<NonNullable<LaunchState["result"]>>;
   inspect: (project: string) => Promise<NonNullable<LaunchState["recovery"]> & { receipt?: unknown }>;
   resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => Promise<NonNullable<LaunchState["result"]>>;
@@ -37,12 +38,14 @@ async function optional(path: string): Promise<string | null> {
 export class LaunchService {
   private state: LaunchState;
   private binding?: string;
+  private plannedHead?: string;
+  private planningBlocked = false;
   private active?: Promise<void>;
   private controller?: AbortController;
   private closed = false;
   private requiresRecovery = false;
   constructor(private project: string, private execution: PanelExecution | undefined, reason: string | undefined, private changed: () => void) {
-    this.state = { enabled: !!execution, ...(reason ? { disabledReason: reason } : {}), status: "idle" };
+    this.state = { enabled: !!execution, planSupported: !!execution?.plan, ...(reason ? { disabledReason: reason } : {}), status: "idle" };
   }
   snapshot(): LaunchState { return structuredClone(this.state); }
   private async fingerprint(): Promise<string> {
@@ -51,7 +54,7 @@ export class LaunchService {
     return hash([head, await optional(join(this.project, ".teamsmith/ledger.jsonl")), latest?.doc ?? null, await optional(join(this.project, ".teamsmith/control.json")), await optional(join(this.project, ".teamsmith/team.json"))]);
   }
   private async save(): Promise<void> {
-    await atomicWrite(join(this.project, ".teamsmith/launch.json"), JSON.stringify({ ...this.state, binding: this.binding, requiresRecovery: this.requiresRecovery }));
+    await atomicWrite(join(this.project, ".teamsmith/launch.json"), JSON.stringify({ ...this.state, binding: this.binding, plannedHead: this.plannedHead, planningBlocked: this.planningBlocked, requiresRecovery: this.requiresRecovery }));
     this.changed();
   }
   async restore(): Promise<void> {
@@ -59,10 +62,14 @@ export class LaunchService {
     await assertStorageFile(join(this.project, ".teamsmith/launch.json"));
     const raw = await optional(join(this.project, ".teamsmith/launch.json"));
     if (!raw) return;
-    const saved = JSON.parse(raw) as LaunchState & { binding?: string; requiresRecovery?: boolean };
+    const saved = JSON.parse(raw) as LaunchState & { binding?: string; plannedHead?: string; planningBlocked?: boolean; requiresRecovery?: boolean };
     if (!["idle", "running", "completed", "stopped", "error"].includes(saved.status) || (saved.approvalToken !== undefined && typeof saved.approvalToken !== "string") || (saved.binding !== undefined && typeof saved.binding !== "string")) throw new Error("Invalid persisted launch state");
-    if (!saved.draft || (validateSpec(saved.draft.spec).spec && hash(saved.draft.spec) === saved.draft.revision)) {
-      this.state = { enabled: true, status: saved.status, ...(saved.draft ? { draft: saved.draft } : {}), ...(saved.approvalToken && saved.draft ? { approvalToken: saved.approvalToken } : {}) };
+    if (saved.draft && (!validateSpec(saved.draft.spec).spec || hash(saved.draft.spec) !== saved.draft.revision)) {
+      delete this.state.approvalToken;
+      throw new Error("Invalid persisted draft; inspect the saved launch state before approving or executing");
+    }
+    {
+      this.state = { enabled: true, planSupported: !!this.execution?.plan, status: saved.status, ...(saved.draft ? { draft: saved.draft } : {}), ...(saved.approvalToken && saved.draft ? { approvalToken: saved.approvalToken } : {}) };
       if (saved.recovery && typeof saved.recovery.recoveryToken === "string" && typeof saved.recovery.canResume === "boolean" && Array.isArray(saved.recovery.reasons) && saved.recovery.reasons.every(r => typeof r === "string")) {
         this.state.recovery = { recoveryToken: saved.recovery.recoveryToken, canResume: saved.recovery.canResume, reasons: saved.recovery.reasons,
           ...(typeof saved.recovery.teamId === "string" ? { teamId: saved.recovery.teamId } : {}),
@@ -75,7 +82,17 @@ export class LaunchService {
       if (saved.result && ["completed", "stopped"].includes(saved.result.status) && Array.isArray(saved.result.accepted) && saved.result.accepted.every(id => typeof id === "string") && saved.result.failures && typeof saved.result.failures === "object") {
         this.state.result = { status: saved.result.status, accepted: saved.result.accepted, failures: Object.fromEntries(Object.entries(saved.result.failures).filter((entry): entry is [string, string] => typeof entry[1] === "string")), ...(typeof saved.result.integrationWorkspace === "string" ? { integrationWorkspace: saved.result.integrationWorkspace } : {}), ...(safeGate(saved.result.integrationVerification) ? { integrationVerification: safeGate(saved.result.integrationVerification) } : {}) };
       }
+      this.planningBlocked = saved.planningBlocked === true;
       this.binding = saved.binding;
+      this.plannedHead = typeof saved.plannedHead === "string" ? saved.plannedHead : undefined;
+      if (saved.planning && ["running", "completed", "error"].includes(saved.planning.status)) {
+        this.state.planning = structuredClone(saved.planning);
+        if (saved.planning.status === "running") {
+          this.planningBlocked = true;
+          this.state.planning = { ...(saved.planning.requestId ? { requestId: saved.planning.requestId } : {}), status: "error", error: "Previous planning was interrupted; inspect .teamsmith/planning.json and the retained workspace before retrying." };
+          delete this.state.approvalToken;
+        }
+      }
       this.requiresRecovery = saved.status === "running" || saved.requiresRecovery === true;
       if (this.requiresRecovery) {
         this.state.status = "error";
@@ -87,25 +104,45 @@ export class LaunchService {
   async request(action: string, body: Record<string, unknown>): Promise<LaunchState> {
     if (!this.execution || this.closed) throw new Error(this.state.disabledReason ?? "Execution is disabled");
     return withStorageLock(join(this.project, ".teamsmith/launch"), async () => {
-      if (this.active) throw new Error("An execution is already running");
+      if (action === "cancel-plan") {
+        if (!this.active || this.state.planning?.status !== "running") throw new Error("No plan generation is running");
+        this.controller?.abort(new Error("Planning cancelled by user"));
+        return this.snapshot();
+      }
+      if (this.active) throw new Error("Planning or execution is already running");
       await this.restore();
       if (this.requiresRecovery && !action.startsWith("recovery/")) throw new Error("Existing execution requires recovery inspection before changes");
-      if (action === "draft") {
-        const validation = validateSpec(body.spec);
-        if (!validation.spec) throw new Error(validation.issues.map(i => i.message).join("; "));
-        const spec = validation.spec;
-        if (spec.work_units.length > 100 || JSON.stringify(spec).length > 60000) throw new Error("Plan exceeds the 100-unit / 60KB limit");
-        if (!spec.verification?.global_gates?.length || spec.verification.global_gates.some(g => !g.trim())) throw new Error("At least one combined-result global gate is required");
-        if (!spec.priorities.budget_target || parseBudget(spec.priorities.budget_target) <= 0 || spec.work_units.some(u => !u.budget_est || parseBudget(u.budget_est) <= 0)) throw new Error("A positive token budget and per-unit estimates are required");
-        this.state = { enabled: true, status: "idle", draft: { revision: hash(spec), spec: structuredClone(spec) } };
+      await assertStorageFile(join(this.project, ".teamsmith/planning.json"));
+      const planningReceipt = await optional(join(this.project, ".teamsmith/planning.json"));
+      if (planningReceipt) {
+        const receipt = validatePlanningReceipt(JSON.parse(planningReceipt));
+        if (receipt.version !== 1 || receipt.status === "running" || receipt.unreconciled !== false || receipt.usageUnknown !== false || receipt.workspaceChanged === true) throw new Error("Planner termination is unconfirmed; inspect .teamsmith/planning.json before changes or execution");
+      }
+      if (this.planningBlocked) throw new Error("Interrupted planning requires manual inspection before changes or execution");
+      if (action === "plan") {
+        if (!this.execution!.plan) throw new Error("Goal planning is unavailable for this execution adapter");
+        const input = validatePlanningInput(body);
+        const ledger = await readLedger(join(this.project, ".teamsmith/ledger.jsonl"));
+        if (ledger.events.length || ledger.issues.length || await optional(join(this.project, ".teamsmith/team.json"))) throw new Error("Existing run requires inspection or recovery before planning");
+        const head = (await exec("git", ["-C", this.project, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim();
+        delete this.state.approvalToken; this.binding = undefined;
+        const dirty = (await exec("git", ["-C", this.project, "status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude).teamsmith"], { windowsHide: true })).stdout;
+        if (dirty.trim()) throw new Error("Commit or preserve local changes before planning; planning reads committed HEAD");
+        await this.beginPlanning(input, head, await this.fingerprint());
+      } else if (action === "draft") {
+        const spec = this.validDraft(body.spec);
+        this.state = { enabled: true, planSupported: !!this.execution!.plan, status: "idle", draft: { revision: hash(spec), spec: structuredClone(spec) } };
         this.binding = undefined;
       } else if (action === "approve") {
         if (!this.state.draft || body.revision !== this.state.draft.revision) throw new Error("Draft revision is stale; review the current plan");
         if (this.state.approvalToken) throw new Error("Draft is already approved");
+        this.assertResolved(this.state.draft.spec);
+        if (this.plannedHead && this.plannedHead !== (await exec("git", ["-C", this.project, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim()) throw new Error("Project HEAD changed since planning; generate and review a current plan");
         this.binding = await this.fingerprint();
         this.state.approvalToken = randomUUID();
       } else if (action === "start") {
         if (!this.state.approvalToken || body.approvalToken !== this.state.approvalToken || !this.state.draft) throw new Error("A current reviewed approval token is required");
+        this.assertResolved(this.state.draft.spec);
         if (this.binding !== await this.fingerprint()) throw new Error("Project changed since approval; review and approve again");
         const dirty = (await exec("git", ["-C", this.project, "status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude).teamsmith"], { windowsHide: true })).stdout;
         if (dirty.trim()) throw new Error("Commit or preserve local changes before launching; teams start from committed HEAD");
@@ -155,6 +192,50 @@ export class LaunchService {
       await this.save();
       return this.snapshot();
     });
+  }
+  private validDraft(value: unknown): Spec {
+    const validation = validateSpec(value);
+    if (!validation.spec) throw new Error(validation.issues.map(i => i.message).join("; "));
+    const spec = validation.spec;
+    if (spec.work_units.length > 100 || JSON.stringify(spec).length > 60000) throw new Error("Plan exceeds the 100-unit / 60KB limit");
+    if (!spec.verification?.global_gates?.length || spec.verification.global_gates.some(g => !g.trim())) throw new Error("At least one combined-result global gate is required");
+    if (!spec.priorities.budget_target || parseBudget(spec.priorities.budget_target) <= 0 || spec.work_units.some(u => !u.budget_est || parseBudget(u.budget_est) <= 0)) throw new Error("A positive token budget and per-unit estimates are required");
+    return spec;
+  }
+  private assertResolved(spec: Spec): void {
+    if (spec.meta.open_questions?.length) throw new Error("Resolve the plan's open questions before approval or execution");
+  }
+  private async beginPlanning(input: GoalPlanningInput, head: string, context: string): Promise<void> {
+    const requestId = randomUUID();
+    this.state.planning = { requestId, status: "running" }; this.state.status = "idle";
+    delete this.state.error; delete this.state.result;
+    this.controller = new AbortController();
+    if (this.closed) this.controller.abort();
+    const controller = this.controller;
+    const intent = this.save();
+    this.active = intent.then(async () => {
+      controller.signal.throwIfAborted();
+      const result = await this.execution!.plan!({ project: this.project, input, signal: controller.signal });
+      controller.signal.throwIfAborted();
+      await withStorageLock(join(this.project, ".teamsmith/launch"), async () => {
+        const currentHead = (await exec("git", ["-C", this.project, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim();
+        if (context !== await this.fingerprint()) throw new Error("Project state changed during planning; inspect the current state before generating again");
+        if (result.head !== head || currentHead !== head) throw new Error("Project HEAD changed during planning; generate again from the current revision");
+        if (!result.usage || ![result.usage.input, result.usage.cached, result.usage.output].every(n => Number.isSafeInteger(n) && n >= 0) || result.usage.cached > result.usage.input) throw new Error("Planner returned invalid usage");
+        const spec = this.validDraft(result.spec);
+        this.state.draft = { revision: hash(spec), spec: structuredClone(spec) };
+        delete this.state.approvalToken; this.binding = undefined; this.plannedHead = head;
+        this.state.planning = { requestId, status: "completed", summary: result.summary, usage: result.usage, provider: result.provider, ...(result.model ? { model: result.model } : {}), draftRevision: this.state.draft.revision };
+      });
+    }).catch(error => {
+      this.state.planning = { requestId, status: "error", error: controller.signal.aborted ? "Planning cancelled. Inspect the planning receipt for any recorded usage." : error instanceof Error ? error.message : "Planning failed; inspect the planning receipt." };
+      delete this.state.approvalToken;
+    }).finally(async () => {
+      try { await withStorageLock(join(this.project, ".teamsmith/launch"), () => this.save()); }
+      catch { this.planningBlocked = true; this.state.planning = { requestId, status: "error", error: "Planning settled but state persistence failed; inspect the planning receipt." }; this.changed(); }
+      finally { this.active = undefined; }
+    });
+    await intent;
   }
   private concurrency(body: Record<string, unknown>): number {
     const value = body.concurrency ?? 2;

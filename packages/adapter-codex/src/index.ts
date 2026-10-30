@@ -7,7 +7,12 @@ import type {
   ExecutionEvent,
   ExecutionReport,
   ExecutionRequest,
+  PlanningAdapter,
+  PlanningRequest,
+  PlanningEvent,
+  PlanningProposal,
 } from "@clockwork/core";
+import { planningProposalSchema, parsePlanningProposal } from "@clockwork/core";
 
 export const REPORT_SCHEMA = {
   type: "object",
@@ -101,16 +106,17 @@ export function buildExecArgs(
   ];
 }
 /** Strict framing, bounded lines; raw tool text/stderr never enters the ledger. */
-export class CodexDecoder {
+class StructuredCodexDecoder<T> {
+  constructor(private readonly parse: (text: string) => T) {}
   private buffer = "";
   private completed = false;
   private thread = false;
-  private report: ExecutionReport | undefined;
+  private report: T | undefined;
   private commandIds = new Set<string>();
   private pendingCommands = new Map<string, string>();
-  feed(chunk: string): ExecutionEvent[] {
+  feed(chunk: string): Exclude<ExecutionEvent, { type: "report" }>[] {
     this.buffer += chunk;
-    const events: ExecutionEvent[] = [];
+    const events: Exclude<ExecutionEvent, { type: "report" }>[] = [];
     let end: number;
     while ((end = this.buffer.indexOf("\n")) !== -1) {
       const line = this.buffer.slice(0, end).trim();
@@ -185,7 +191,7 @@ export class CodexDecoder {
               throw new Error("Missing Codex final message");
             // The final schema-conforming message replaces intermediate commentary.
             try {
-              this.report = parseReport(raw.item.text);
+              this.report = this.parse(raw.item.text);
             } catch {
               this.report = undefined;
             }
@@ -231,12 +237,25 @@ export class CodexDecoder {
       throw new Error("Codex event exceeds the size limit");
     return events;
   }
-  finish(): ExecutionReport {
+  finish(): T {
     if (this.buffer.trim() || !this.thread || !this.completed || !this.report || this.pendingCommands.size)
       throw new Error(
         "Incomplete Codex execution stream or missing structured report",
       );
     return this.report;
+  }
+}
+/** Execution receipt parsing remains identical for the production path. */
+export class CodexDecoder extends StructuredCodexDecoder<ExecutionReport> {
+  constructor() { super(parseReport); }
+}
+export class CodexPlanningDecoder extends StructuredCodexDecoder<PlanningProposal> {
+  constructor() {
+    super(text => {
+      let value: unknown;
+      try { value = JSON.parse(text); } catch { throw new Error("Codex returned invalid planning JSON"); }
+      return parsePlanningProposal(value);
+    });
   }
 }
 export interface CodexOptions {
@@ -246,10 +265,22 @@ export interface CodexOptions {
   heartbeatMs?: number;
   windowsSandbox?: "elevated" | "unelevated" | "mxc";
 }
-export class CodexAdapter implements ExecutionAdapter {
+export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
   readonly id = "codex";
   constructor(private readonly options: CodexOptions = {}) {}
   async *execute(request: ExecutionRequest): AsyncGenerator<ExecutionEvent> {
+    for await (const event of this.structured(request, REPORT_SCHEMA, new CodexDecoder())) {
+      if (event.type === "structured") yield { type: "report", report: event.value };
+      else yield event;
+    }
+  }
+  async *plan(request: PlanningRequest): AsyncGenerator<PlanningEvent> {
+    for await (const event of this.structured({ ...request, mode: "verify" }, planningProposalSchema, new CodexPlanningDecoder())) {
+      if (event.type === "structured") yield { type: "plan", proposal: event.value };
+      else yield event;
+    }
+  }
+  private async *structured<T>(request: ExecutionRequest, outputSchema: unknown, decoder: StructuredCodexDecoder<T>): AsyncGenerator<Exclude<ExecutionEvent, { type: "report" }> | { type: "structured"; value: T }> {
     request.signal.throwIfAborted();
     const heartbeatMs = this.options.heartbeatMs ?? 5000;
     if (!Number.isSafeInteger(heartbeatMs) || heartbeatMs < 10)
@@ -267,7 +298,7 @@ export class CodexAdapter implements ExecutionAdapter {
     if (request.signal.aborted) abort();
     try {
       const schema = join(temp, "report.schema.json");
-      await writeFile(schema, JSON.stringify(REPORT_SCHEMA), { flag: "wx" });
+      await writeFile(schema, JSON.stringify(outputSchema), { flag: "wx" });
       const environment = { ...process.env };
       // Local saved CLI auth only. Never forward API-key credentials to a worker.
       delete environment.OPENAI_API_KEY;
@@ -327,7 +358,6 @@ export class CodexAdapter implements ExecutionAdapter {
       processHandle.stdout?.setEncoding("utf8");
       processHandle.stdin?.on("error", () => {});
       processHandle.stdin?.end(request.prompt);
-      const decoder = new CodexDecoder();
       const stdout = processHandle.stdout![Symbol.asyncIterator]();
       // Retain exactly one outstanding read while the actual child timer supplies
       // liveness events. Partial or malformed JSONL is never activity.
@@ -364,7 +394,7 @@ export class CodexAdapter implements ExecutionAdapter {
         throw new Error(
           `Codex CLI exited unsuccessfully (${exit.code ?? "signal"})`,
         );
-      yield { type: "report", report: decoder.finish() };
+      yield { type: "structured", value: decoder.finish() };
     } finally {
       if (timer) clearTimeout(timer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);

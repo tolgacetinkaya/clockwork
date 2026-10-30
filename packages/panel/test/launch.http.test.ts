@@ -173,3 +173,91 @@ describe("mission control HTTP", () => {
     await panel.close(); expect(settled).toBe(true);
   });
 });
+it("generates asynchronously, rejects duplicate clicks, and exposes an unapproved usage-bearing draft", async () => {
+  await panel.close();
+  let release!: () => void;
+  const wait = new Promise<void>(r => { release = r; });
+  const head = (await exec("git", ["-C", project, "rev-parse", "HEAD"])).stdout.trim();
+  execution.plan = vi.fn(async () => { await wait; return { summary: "A goal-specific research team", spec: spec() as never, usage: { input: 20, cached: 5, output: 10 }, provider: "controlled", head }; });
+  panel = await startPanel({ projectDir: project, execution });
+  const pending = await post("plan", { goal: "Build test feature", budget: 10000 });
+  expect(pending.status).toBe(200);
+  expect((await pending.json() as LaunchState).planning?.status).toBe("running");
+  expect((await post("plan", { goal: "Duplicate", budget: 10000 })).status).toBe(409);
+  expect(execution.plan).toHaveBeenCalledTimes(1); expect(execution.run).not.toHaveBeenCalled();
+  release();
+  await vi.waitFor(async () => {
+    const state = await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState;
+    expect(state.planning).toMatchObject({ status: "completed", summary: "A goal-specific research team", usage: { input: 20, cached: 5, output: 10 }, draftRevision: state.draft?.revision });
+    expect(state.approvalToken).toBeUndefined(); expect(state.planSupported).toBe(true);
+  });
+  expect(execution.run).not.toHaveBeenCalled();
+  await expect(readFile(join(project, ".teamsmith/ledger.jsonl"))).rejects.toThrow();
+});
+it("cancels planning without approval and keeps close responsive to the abort signal", async () => {
+  await panel.close();
+  let aborted = false;
+  execution.plan = vi.fn(({ signal }) => new Promise<never>((_resolve, reject) => { signal.addEventListener("abort", () => { aborted = true; reject(new Error("cancelled")); }, { once: true }); }));
+  panel = await startPanel({ projectDir: project, execution });
+  expect((await post("plan", { goal: "Diagnose delay", budget: 1000 })).status).toBe(200);
+  expect((await post("cancel-plan", {})).status).toBe(200);
+  await vi.waitFor(async () => { expect((await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState).planning?.status).toBe("error"); });
+  expect(aborted).toBe(true); expect(execution.run).not.toHaveBeenCalled();
+  expect((await post("start", {})).status).toBe(409);
+});
+it("rejects stale planning results and changed HEAD before approval", async () => {
+  await panel.close();
+  const head = (await exec("git", ["-C", project, "rev-parse", "HEAD"])).stdout.trim();
+  execution.plan = vi.fn(async () => ({ summary: "Plan", spec: spec() as never, usage: { input: 1, cached: 0, output: 1 }, provider: "controlled", head }));
+  panel = await startPanel({ projectDir: project, execution });
+  expect((await post("plan", { goal: "Build test feature", budget: 10000 })).status).toBe(200);
+  await vi.waitFor(async () => { expect((await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState).planning?.status).toBe("completed"); });
+  await writeFile(join(project, "baseline.txt"), "new source");
+  await exec("git", ["-C", project, "add", "baseline.txt"]);
+  await exec("git", ["-C", project, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "new source"]);
+  const state = await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState;
+  expect((await post("approve", { revision: state.draft!.revision })).status).toBe(409);
+  expect((await post("plan", { goal: "Build test feature", budget: 10000 })).status).toBe(200);
+  await vi.waitFor(async () => { expect((await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState).planning?.status).toBe("error"); });
+  expect(execution.run).not.toHaveBeenCalled();
+});
+it("allows saving unresolved questions but blocks approval, and refuses unsafe planning receipts", async () => {
+  const unresolved = { ...spec(), meta: { goal: "Build test feature", open_questions: ["Which data source is authoritative?"] } };
+  const draft = await (await post("draft", { spec: unresolved })).json() as LaunchState;
+  expect((await post("approve", { revision: draft.draft!.revision })).status).toBe(409);
+  await writeFile(join(project, ".teamsmith/planning.json"), JSON.stringify({ version: 1, status: "error", usageUnknown: true, unreconciled: true }));
+  expect((await post("draft", { spec: spec() })).status).toBe(409);
+  expect((await post("plan", { goal: "Research", budget: 1000 })).status).toBe(409);
+  expect(execution.run).not.toHaveBeenCalled();
+});
+it("restores interrupted planning fail-closed across repeated panel restarts", async () => {
+  await panel.close();
+  await writeFile(join(project, ".teamsmith/launch.json"), JSON.stringify({ enabled: true, status: "idle", planning: { status: "running" } }));
+  execution.plan = vi.fn();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    panel = await startPanel({ projectDir: project, execution });
+    const state = await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState;
+    expect(state.planning?.status).toBe("error"); expect(state.approvalToken).toBeUndefined();
+    expect((await post("draft", { spec: spec() })).status).toBe(409);
+    await panel.close();
+  }
+  expect(execution.plan).not.toHaveBeenCalled();
+});
+it("rejects a generated candidate after controls change during the provider call", async () => {
+  await panel.close();
+  let release!: () => void;
+  const wait = new Promise<void>(r => { release = r; });
+  const head = (await exec("git", ["-C", project, "rev-parse", "HEAD"])).stdout.trim();
+  execution.plan = vi.fn(async () => { await wait; return { summary: "Candidate", spec: spec() as never, usage: { input: 5, cached: 0, output: 3 }, provider: "controlled", head }; });
+  panel = await startPanel({ projectDir: project, execution });
+  expect((await post("plan", { goal: "Build test feature", budget: 10000 })).status).toBe(200);
+  await writeFile(join(project, ".teamsmith/control.json"), JSON.stringify({ paused: true, kill: false }));
+  release();
+  await vi.waitFor(async () => {
+    const state = await (await fetch(`${panel.url}/api/launch`)).json() as LaunchState;
+    expect(state.planning?.status).toBe("error");
+    expect(state.planning?.error).toContain("state changed");
+    expect(state.draft).toBeUndefined(); expect(state.approvalToken).toBeUndefined();
+  });
+  expect(execution.run).not.toHaveBeenCalled();
+});

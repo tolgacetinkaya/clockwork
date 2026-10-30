@@ -57,6 +57,14 @@ view edits and reviews a plan before explicit approval and start. Docker demos
 and panels without this option cannot launch agents. See
 [Mission control](mission-control.md) for the complete workflow and recovery.
 
+## Prepare a plan from a goal
+
+Use `cw plan --goal "Your goal" --budget 100000` or the explicit goal-planning
+action in Mission control. The local planner returns an editable proposal and
+records its separate usage; it never approves or executes the work. Set
+`--planner-model` for planning independently of production/review models. See
+[goal-driven planning](goal-planning.md) for review and recovery boundaries.
+
 ## Execute one unit
 
 Create a linked worktree belonging to the target repository. Start from a commit

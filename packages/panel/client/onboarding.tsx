@@ -13,7 +13,7 @@ export function Onboarding({ snapshot }: { snapshot?: PanelSnapshot }) {
   const enabled = snapshot?.mode === "workspace" && snapshot.launch?.enabled;
   const steps = [
     { icon: FolderGit2, title: "1. Connect your project", body: "The project is the Git workspace used to start this panel. Choose it in your terminal." },
-    { icon: ListTodo, title: "2. Describe the work", body: "Planning is manual: write a goal, then add tasks, owned files, dependencies and acceptance evidence." },
+    { icon: ListTodo, title: "2. Describe the work", body: "Write tasks yourself, or request an editable task plan and team from your goal when goal planning is available." },
     { icon: CheckCircle2, title: "3. Save, review and start", body: "Saving does not run agents. Review the plan, approve it, then start explicitly." },
     { icon: Users, title: "4. Follow the crew", body: "Tasks show delivery progress. The team shows who produced and independently checked the work." },
     { icon: FileCheck2, title: "5. Check the whole result", body: "Inspect combined verification evidence before treating the project as ready." },

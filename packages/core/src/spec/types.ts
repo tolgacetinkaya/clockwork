@@ -13,6 +13,8 @@ export type BudgetValue = number | string;
 
 export interface SpecMeta {
   goal: string;
+  /** Host-supplied user constraints retained through planning and execution. */
+  constraints?: string[];
   assumptions?: string[];
   open_questions?: string[];
 }

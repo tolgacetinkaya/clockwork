@@ -26,7 +26,7 @@ describe("getting started guides the actual supported workflow",()=>{
   it("explains recorded-demo limits, real workspace binding and useful places to inspect recorded work",()=>{
     const html=renderToStaticMarkup(createElement(Onboarding,{snapshot:snapshot("recorded-demo",false)}));
     expect(html).toContain("This Docker demo shows recorded work and cannot start agents.");
-    expect(html).toContain("Planning is manual:");
+    expect(html).toContain("Write tasks yourself,");
     expect(html).toContain("Choose it in your terminal.");
     expect(html).toContain("Connect a workspace first");
     expect(html).toContain("Explore recorded run");
@@ -58,7 +58,7 @@ describe("getting started guides the actual supported workflow",()=>{
     expect(demo).toContain("Connect a workspace first");
     const workspace=missionHTML(snapshot("workspace",true));
     expect(workspace).not.toMatch(/<fieldset class="mission-editor" disabled/);
-    expect(workspace).toContain("Planning is manual:");
+    expect(workspace).toContain("Write tasks yourself,");
     expect(workspace).toContain("Task setup");
     expect(workspace).toContain("I reviewed ownership, dependencies, acceptance and combined verification commands.");
     for (const html of [demo,workspace]) {

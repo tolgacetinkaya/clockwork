@@ -94,6 +94,7 @@ export const specSchema = {
       required: ["goal"],
       properties: {
         goal: { type: "string", minLength: 1 },
+        constraints: { type: "array", items: { type: "string", minLength: 1 } },
         assumptions: { type: "array", items: { type: "string" } },
         open_questions: { type: "array", items: { type: "string" } },
       },

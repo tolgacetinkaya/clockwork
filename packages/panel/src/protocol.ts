@@ -28,6 +28,8 @@ export interface PanelAgent {
 }
 export interface LaunchState {
   enabled: boolean;
+  planSupported?: boolean;
+  planning?: { requestId?: string; status: "running" | "completed" | "error"; summary?: string; usage?: { input: number; cached: number; output: number }; provider?: string; model?: string; draftRevision?: string; error?: string };
   disabledReason?: string;
   draft?: { revision: string; spec: Spec };
   approvalToken?: string;

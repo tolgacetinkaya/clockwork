@@ -86,3 +86,6 @@ export type {
 export { buildUnitPrompt, buildVerifierPrompt, buildAgentDefinition } from "./execution/prompts.js";
 export type * from "./execution/types.js";
 export { withStorageLock, atomicWrite, assertStorageFile } from "./storage/lock.js";
+export * from "./execution/planning.js";
+export { validatePlanningReceipt } from "./execution/planning-receipt.js";
+export type { PlanningReceipt } from "./execution/planning-receipt.js";

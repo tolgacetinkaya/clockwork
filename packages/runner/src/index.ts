@@ -29,6 +29,7 @@ import type { CommandReceipt } from "./evidence.js";
 import { watchExecution, resolveWatchdogPolicy, WatchdogError } from "./watchdog.js";
 import type { WatchdogPolicy, WatchdogAlert } from "./watchdog.js";
 import { trackDelivery } from "./delivery.js";
+import { assertPlanningSettled } from "./planning.js";
 /** Requested identities only: omission delegates selection to the adapter. */
 export interface ExecutionModelOptions {
   /** Compatibility fallback for every role without a more specific selection. */
@@ -98,6 +99,7 @@ function unsettledExecutionReasons(state: RunState): string[] {
   return reasons;
 }
 async function assertSettledExecutions(project: string): Promise<void> {
+  await assertPlanningSettled(project);
   const reasons = unsettledExecutionReasons(reduceLedger((await readLedger(join(project, ".teamsmith/ledger.jsonl"))).events));
   if (reasons.length) throw new Error(reasons.join("; "));
 }
@@ -140,6 +142,7 @@ async function preflight(
     state.outcome ||
     state.paused ||
     state.pendingQuestions.length ||
+    loaded.spec.meta.open_questions?.length ||
     state.openCheckpoints.some((c) => c.blocking)
   )
     throw new Error("Run is not ready for execution");
@@ -752,7 +755,7 @@ async function verifyIntegration(options: RunTeamOptions, spec: Spec, workspace:
     await append("agent.spawned");
     for await (const event of watchExecution(options.adapter.execute({
       workspace, mode: "verify", model, signal: controller.signal,
-      prompt: `# Final integration verification\n\nGoal: ${spec.meta.goal}\nYou are a fresh independent read-only verifier over the combined integrated result.\nRun EVERY global acceptance gate below and give exact criterion, EXACT command string from the completed command_execution tool event (including shell wrappers), observed result and passed boolean.\nNever modify files, Git metadata, commit, start agents, publish, access credentials or external services.\nA gate without actual evidence fails. Return ONLY the report JSON with outcome accepted, rework, or blocked.\n\n## Global acceptance gates\n${gates.map(g => `- ${g}`).join("\n")}\n`,
+      prompt: `# Final integration verification\n\nGoal: ${spec.meta.goal}\n\n## User constraints\n${(spec.meta.constraints ?? []).map(c => `- ${c}`).join("\n")}\n\n## Approved assumptions\n${(spec.meta.assumptions ?? []).map(a => `- ${a}`).join("\n")}\n\nYou are a fresh independent read-only verifier over the combined integrated result.\nRun EVERY global acceptance gate below and give exact criterion, EXACT command string from the completed command_execution tool event (including shell wrappers), observed result and passed boolean.\nNever modify files, Git metadata, commit, start agents, publish, access credentials or external services.\nA gate without actual evidence fails. Return ONLY the report JSON with outcome accepted, rework, or blocked.\n\n## Global acceptance gates\n${gates.map(g => `- ${g}`).join("\n")}\n`,
     }), { signal: controller.signal, abort: reason => controller.abort(reason), policy: watchdog, onAlert: recordAlert })) {
       controller.signal.throwIfAborted();
       if (event.type === "heartbeat") await append("agent.activity", { kind: "process_heartbeat", status: "updated" });
@@ -827,6 +830,7 @@ async function inspectRecovery(project: string, ownsLease: boolean, options: Exe
     return contents;
   };
   let receipt: TeamReceipt | null = null;
+  try { await assertPlanningSettled(project); } catch (error) { reasons.push(error instanceof Error ? error.message : "Planning requires reconciliation"); }
   try {
     const value: unknown = JSON.parse(await read("team.json"));
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid team receipt");
@@ -922,6 +926,7 @@ export async function resumeTeam(options: RunTeamOptions & { recoveryToken: stri
     throw new Error("Team concurrency must be an integer from 1 to 8");
   return withStorageLock(join(options.project, ".teamsmith/execution"), async () => {
     options.signal?.throwIfAborted();
+    await assertPlanningSettled(options.project);
     const recovery = await withStorageLock(join(options.project, ".teamsmith/control.json"), async () => {
     const inspection = await inspectRecovery(options.project, true, options);
     if (inspection.recoveryToken !== options.recoveryToken) throw new Error("Recovery review is stale; inspect the team again before resuming");
@@ -972,3 +977,5 @@ export async function resumeTeam(options: RunTeamOptions & { recoveryToken: stri
     }
   });
 }
+export { generateGoalPlan, assertPlanningSettled } from "./planning.js";
+export type { GenerateGoalPlanOptions, GoalPlanResult, PlanningUsage } from "./planning.js";
