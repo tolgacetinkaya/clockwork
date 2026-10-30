@@ -24,8 +24,9 @@ Implemented:
 - Event admission, state replay, budget accounting, and retrospective records.
 - Claude Code prompt generation and a PreToolUse approval hook.
 - Local Codex producer/verifier execution with shared lifecycle and delivery gates.
-- A local management panel with production/verification stages, dependency waiting
-  reasons, control requests, and a durable command queue.
+- A local management panel with reviewed mission launch, controlled recovery,
+  crew contribution badges, dependency waiting reasons, and a durable command queue.
+- Fresh whole-project verification of the integrated result against configured gates.
 
 The panel uses React 19, Tailwind CSS, and a shared SSE stream. Overview,
 workboard, team, activity, and decisions share one TanStack Query cache; Zustand
@@ -71,7 +72,10 @@ first launch. Commands and control requests affect the copy. With no command
 consumer running in the demo, queued notes wait to be handled.
 
 Without Docker, `npm run -s clockwork -- ui --port 47831` serves the current
-project's state. A new project initially has no run history.
+project's state. A new project initially has no run history. To prepare and launch
+reviewed Codex teams from a target repository, explicitly enable the local runner
+with `ui --enable-execution --port 47833`. See [Mission control](docs/mission-control.md)
+for plan approval, crew tracking, final verification and controlled recovery.
 
 ## Execution boundaries
 

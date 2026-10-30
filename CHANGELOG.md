@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added local Mission control: editable task plans, revision-bound approval, explicit Codex launch and streamed execution state.
+- Added whole-project read-only verification and reviewed recovery that preserves accepted deliveries and prior attempts.
+- Added crew stage cards and evidence-based recent-window contribution badges.
+
 - Added panel production/verification stage tracking and dependency waiting reasons.
 - Added `codex team` foreground scheduling (default 2, maximum 8 concurrent units), isolated integration worktrees, dependency integration, budget reservations and durable stop/recovery records.
 

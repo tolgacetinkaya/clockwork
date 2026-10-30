@@ -4,10 +4,12 @@
  * shown is `readLedger` + `reduceLedger` output or a projection built by core.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   appendCommand,
+  atomicWrite,
+  withStorageLock,
   buildBudgetReport,
   peekCommands,
   readLedger,
@@ -51,14 +53,13 @@ export async function writeControl(
   projectDir: string,
   patch: Partial<ControlState>,
 ): Promise<ControlState> {
-  const current = await readControlFile(projectDir);
-  const next: ControlState = {
-    paused: patch.paused ?? current.paused,
-    kill: patch.kill ?? current.kill,
-  };
-  await mkdir(join(projectDir, TS_DIR), { recursive: true });
-  await writeFile(join(projectDir, TS_DIR, CONTROL_FILE), JSON.stringify(next), "utf8");
-  return next;
+  const path = join(projectDir, TS_DIR, CONTROL_FILE);
+  return withStorageLock(path, async () => {
+    const current = await readControlFile(projectDir);
+    const next: ControlState = { paused: patch.paused ?? current.paused, kill: patch.kill ?? current.kill };
+    await atomicWrite(path, JSON.stringify(next));
+    return next;
+  });
 }
 
 /**

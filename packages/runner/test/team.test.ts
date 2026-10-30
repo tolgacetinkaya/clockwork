@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LedgerWriter, readLedger, reduceLedger, writeSpecFile } from "@clockwork/core";
 import type { ExecutionAdapter, ExecutionEvent, Spec } from "@clockwork/core";
-import { runTeam, runUnit } from "../src/index.js";
+import { inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "../src/index.js";
 import { git } from "../src/workspace.js";
 import * as workspaceModule from "../src/workspace.js";
 import * as coreModule from "@clockwork/core";
@@ -322,6 +322,9 @@ describe("automatic isolated team", () => {
     expect(await git(project, "status", "--porcelain")).toBe(originalStatus);
     expect(await readFile(join(project, "README.md"), "utf8")).toBe("user uncommitted edit");
     expect(await git(result.integrationWorkspace!, "ls-files", "--unmerged")).toContain("README.md");
+    const recovery = await inspectTeamRecovery(project);
+    expect(recovery.canResume).toBe(false);
+    expect(recovery.reasons.join(" ")).toMatch(/conflict|disagree/);
     const receipt = JSON.parse(await readFile(join(project, ".teamsmith/team.json"), "utf8"));
     expect(receipt.status).toBe("stopped");
     expect(receipt.accepted).toEqual(result.accepted);
@@ -336,6 +339,234 @@ describe("automatic isolated team", () => {
     expect(state.units["wu-c"]?.status).toBe("pending");
     expect(state.openCheckpoints.some(checkpoint => checkpoint.blocking)).toBe(true);
     expect(state.anomalies).toEqual([]);
+  }, 20000);
+
+  it("verifies configured combined gates in a fresh readonly session and records actual usage", async () => {
+    const { project } = await fixture(false, 10000, false, spec => { spec.verification = { global_gates: ["both files combine"] }; });
+    const base = adapter();
+    let finalSessions = 0;
+    const result = await runTeam({ project, adapter: { id: "test", async *execute(request) {
+      if (!request.prompt.startsWith("# Final integration verification")) { yield* base.execute(request); return; }
+      finalSessions++;
+      expect(request.mode).toBe("verify");
+      expect(await git(request.workspace, "status", "--porcelain")).toBe("");
+      const combined = await readFile(join(request.workspace, "a.txt"), "utf8") + await readFile(join(request.workspace, "b.txt"), "utf8");
+      expect(combined).toBe("wu-awu-b");
+      yield { type: "usage", input: 7, cached: 2, output: 3 };
+      yield { type: "report", report: { outcome: "accepted", summary: "combined", findings: [], evidence: [{ criterion: "both files combine", command: "read a.txt and b.txt", result: combined, passed: true }] } };
+    } } });
+    expect(result.status).toBe("completed");
+    expect(result.integrationVerification?.status).toBe("passed");
+    expect(finalSessions).toBe(1);
+    const events = (await readLedger(join(project, ".teamsmith/ledger.jsonl"))).events;
+    expect(reduceLedger(events).totalSpent).toBe(58);
+    expect(events.find(e => e.type === "budget.spent" && e.data?.mode === "integration_verify")?.data?.tokens).toBe(10);
+    expect(reduceLedger(events).anomalies).toEqual([]);
+  }, 20000);
+  it("resumes a stopped partial team after an exact archive-only interruption without rerunning accepted work", async () => {
+    const { project } = await fixture(true);
+    const base = adapter();
+    const first = await runTeam({ project, adapter: { id: "test", async *execute(request) {
+      for await (const event of base.execute(request)) {
+        if (request.mode === "produce" && request.prompt.includes("# Work unit: wu-b") && event.type === "report")
+          yield { ...event, report: { ...event.report, outcome: "blocked" as const } };
+        else yield event;
+      }
+    } } });
+    expect(first.status).toBe("stopped");
+    expect(first.accepted).toEqual(["wu-a"]);
+    const old = JSON.parse(await readFile(join(project, ".teamsmith/team.json"), "utf8"));
+    // Simulate a process exiting after exclusive archive creation, before receipt advance.
+    const executionReceipts: Record<string, unknown> = {};
+    for (const unit of Object.keys(old.workspaces)) {
+      try { executionReceipts[unit] = JSON.parse(await readFile(join(project, ".teamsmith/executions", `${unit}.json`), "utf8")); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    const archivePath = join(project, ".teamsmith", `team-${old.id}-attempt-1.json`);
+    const archiveContents = JSON.stringify({ ...old, executionReceipts }, null, 2);
+    await writeFile(archivePath, archiveContents, { flag: "wx" });
+    const review = await inspectTeamRecovery(project);
+    expect(review.reasons).toEqual([]);
+    expect(review.canResume).toBe(true);
+    const retryCalls: string[] = [];
+    const result = await resumeTeam({ project, recoveryToken: review.recoveryToken, adapter: adapter(async (workspace, unit) => {
+      retryCalls.push(unit);
+      expect(await readFile(join(workspace, "a.txt"), "utf8")).toBe("wu-a");
+    }) });
+    expect(result.status).toBe("completed");
+    expect(result.integrationVerification?.status).toBe("not_configured");
+    expect(retryCalls).toEqual(["wu-b"]);
+    expect(result.accepted).toEqual(["wu-a", "wu-b"]);
+    const current = JSON.parse(await readFile(join(project, ".teamsmith/team.json"), "utf8"));
+    expect(current.workspaces["wu-b"]).not.toBe(old.workspaces["wu-b"]);
+    expect(await readFile(join(old.workspaces["wu-b"], "b.txt"), "utf8")).toBe("wu-b");
+    const archive = JSON.parse(await readFile(join(project, ".teamsmith", `team-${old.id}-attempt-1.json`), "utf8"));
+    expect(archive.workspaces).toEqual(old.workspaces);
+    expect(await readFile(archivePath, "utf8")).toBe(archiveContents);
+    const events = (await readLedger(join(project, ".teamsmith/ledger.jsonl"))).events;
+    expect(events.find(e => e.type === "unit.retry_requested")?.actor).toBe("user");
+    expect(reduceLedger(events).openCheckpoints).toEqual([]);
+    expect(reduceLedger(events).anomalies).toEqual([]);
+  }, 20000);
+  it("retries only final gates after a clean combined verification failure", async () => {
+    const { project } = await fixture(false, 10000, false, spec => { spec.verification = { global_gates: ["combined test passes"] }; });
+    const base = adapter();
+    const gateAdapter = (pass: boolean): ExecutionAdapter => ({ id: "test", async *execute(request) {
+      if (!request.prompt.startsWith("# Final integration verification")) { yield* base.execute(request); return; }
+      yield { type: "usage", input: 8, cached: 0, output: 2 };
+      yield { type: "report", report: { outcome: pass ? "accepted" : "rework", summary: "gate", findings: pass ? [] : ["combined failed"], evidence: [{ criterion: "combined test passes", command: "combined test", result: pass ? "pass" : "fail", passed: pass }] } };
+    } });
+    const first = await runTeam({ project, adapter: gateAdapter(false) });
+    expect(first.status).toBe("stopped");
+    expect(first.integrationVerification?.status).toBe("failed");
+    expect(first.accepted).toHaveLength(2);
+    const review = await inspectTeamRecovery(project);
+    expect(review.reasons).toEqual([]);
+    let sessions = 0;
+    const good = gateAdapter(true);
+    const result = await resumeTeam({ project, recoveryToken: review.recoveryToken, adapter: { id: "test", async *execute(request) {
+      sessions++; expect(request.prompt).toMatch(/^# Final integration verification/); yield* good.execute(request);
+    } } });
+    expect(result.status).toBe("completed");
+    expect(result.integrationVerification?.status).toBe("passed");
+    expect(sessions).toBe(1);
+  }, 20000);
+  it("rejects stale review tokens and unknown usage before recovery writes", async () => {
+    const { project } = await fixture(true);
+    await runTeam({ project, adapter: { id: "test", async *execute() { throw new Error("connection lost"); } } });
+    const review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(false);
+    expect(review.reasons.join(" ")).toMatch(/Unknown execution usage/);
+    const before = await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8");
+    const beforeReceipt = await readFile(join(project, ".teamsmith/team.json"), "utf8");
+    await expect(resumeTeam({ project, adapter: adapter(), concurrency: 0, recoveryToken: review.recoveryToken })).rejects.toThrow(/concurrency/);
+    expect(await readFile(join(project, ".teamsmith/team.json"), "utf8")).toBe(beforeReceipt);
+    expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(before);
+    await expect(resumeTeam({ project, adapter: adapter(), recoveryToken: review.recoveryToken })).rejects.toThrow(/Unknown execution usage/);
+    expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(before);
+    await writeFile(join(project, ".teamsmith/control.json"), '{"paused":true,"kill":false}');
+    await expect(resumeTeam({ project, adapter: adapter(), recoveryToken: review.recoveryToken })).rejects.toThrow(/stale/);
+    expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(before);
+  }, 20000);
+
+  it("refuses a final verifier that changes integrated files and blocks tampered recovery", async () => {
+    const { project } = await fixture(false, 10000, false, spec => { spec.verification = { global_gates: ["combined passes"] }; });
+    const base = adapter();
+    const result = await runTeam({ project, adapter: { id: "test", async *execute(request) {
+      if (!request.prompt.startsWith("# Final integration verification")) { yield* base.execute(request); return; }
+      await writeFile(join(request.workspace, "README.md"), "verifier modified delivery");
+      yield { type: "usage", input: 4, cached: 0, output: 2 };
+      yield { type: "report", report: { outcome: "accepted", summary: "claimed success", findings: [], evidence: [{ criterion: "combined passes", command: "test", result: "pass", passed: true }] } };
+    } } });
+    expect(result.status).toBe("stopped");
+    expect(result.integrationVerification?.status).toBe("failed");
+    expect(result.failures.integration).toMatch(/modified/);
+    const review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(false);
+    expect(review.reasons.join(" ")).toMatch(/HEAD or files changed/);
+    const ledger = await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8");
+    await expect(resumeTeam({ project, adapter: adapter(), recoveryToken: review.recoveryToken })).rejects.toThrow(/blocked/);
+    expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(ledger);
+    expect(await readFile(join(result.integrationWorkspace!, "README.md"), "utf8")).toBe("verifier modified delivery");
+  }, 20000);
+  it("respects unrelated blockers and only clears pause controls on explicit reviewed resume", async () => {
+    const { project, writer } = await fixture(true);
+    const base = adapter();
+    await runTeam({ project, adapter: { id: "test", async *execute(request) {
+      for await (const event of base.execute(request)) {
+        if (request.mode === "produce" && request.prompt.includes("# Work unit: wu-b") && event.type === "report")
+          yield { ...event, report: { ...event.report, outcome: "blocked" as const } };
+        else yield event;
+      }
+    } } });
+    await writer.append("interaction.checkpoint_raised", { data: { ref: "unrelated-review", kind: "gate", blocking: true } });
+    await writer.append("run.paused", { actor: "user" });
+    await writeFile(join(project, ".teamsmith/control.json"), '{"paused":true,"kill":true}');
+    const blocked = await inspectTeamRecovery(project);
+    expect(blocked.reasons.join(" ")).toMatch(/Unrelated/);
+    await expect(resumeTeam({ project, adapter: adapter(), recoveryToken: blocked.recoveryToken })).rejects.toThrow(/Unrelated/);
+    expect(JSON.parse(await readFile(join(project, ".teamsmith/control.json"), "utf8"))).toEqual({ paused: true, kill: true });
+    await writer.append("interaction.checkpoint_resolved", { actor: "user", data: { ref: "unrelated-review" } });
+    const review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(true);
+    const result = await resumeTeam({ project, adapter: adapter(), recoveryToken: review.recoveryToken });
+    expect(result.status).toBe("completed");
+    expect(JSON.parse(await readFile(join(project, ".teamsmith/control.json"), "utf8"))).toEqual({ paused: false, kill: false });
+    const state = reduceLedger((await readLedger(join(project, ".teamsmith/ledger.jsonl"))).events);
+    expect(state.paused).toBe(false);
+    expect(state.openCheckpoints).toEqual([]);
+    expect(state.anomalies).toEqual([]);
+  }, 20000);
+
+  it.each(["usage", "report"] as const)("refuses final verifier missing %s and accounts conservatively", async missing => {
+    const { project } = await fixture(false, 10000, false, spec => { spec.verification = { global_gates: ["combined passes"] }; });
+    const base = adapter();
+    const result = await runTeam({ project, adapter: { id: "test", async *execute(request) {
+      if (!request.prompt.startsWith("# Final integration verification")) { yield* base.execute(request); return; }
+      if (missing !== "usage") yield { type: "usage", input: 4, cached: 0, output: 2 };
+      if (missing !== "report") yield { type: "report", report: { outcome: "accepted", summary: "claimed success", findings: [], evidence: [{ criterion: "combined passes", command: "test", result: "pass", passed: true }] } };
+    } } });
+    expect(result.status).toBe("stopped");
+    expect(result.integrationVerification?.status).toBe("failed");
+    const events = (await readLedger(join(project, ".teamsmith/ledger.jsonl"))).events;
+    const error = events.find(e => e.type === "agent.error" && e.data?.mode === "integration_verify");
+    expect(error?.data?.usage_unknown).toBe(missing === "usage");
+    expect(reduceLedger(events).totalSpent).toBe(missing === "usage" ? 48 : 54);
+    const review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(missing !== "usage");
+    if (missing === "usage") expect(review.reasons.join(" ")).toMatch(/Unknown execution usage/);
+  }, 20000);
+
+  it("reviews controls under their lock so a newer stop cannot be cleared", async () => {
+    const { project } = await fixture(true);
+    const base = adapter();
+    await runTeam({ project, adapter: { id: "test", async *execute(request) {
+      for await (const event of base.execute(request)) {
+        if (request.mode === "produce" && request.prompt.includes("# Work unit: wu-b") && event.type === "report")
+          yield { ...event, report: { ...event.report, outcome: "blocked" as const } };
+        else yield event;
+      }
+    } } });
+    const review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(true);
+    const ledger = await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8");
+    const receipt = await readFile(join(project, ".teamsmith/team.json"), "utf8");
+    const control = join(project, ".teamsmith/control.json");
+    let outcome!: Promise<unknown>;
+    await coreModule.withStorageLock(control, async () => {
+      outcome = resumeTeam({ project, adapter: adapter(), recoveryToken: review.recoveryToken }).then(() => "unexpected success", error => error);
+      await new Promise(r => setTimeout(r, 100));
+      await coreModule.atomicWrite(control, '{"paused":true,"kill":true}');
+    });
+    expect((await outcome as Error).message).toMatch(/stale/);
+    expect(await readFile(control, "utf8")).toBe('{"paused":true,"kill":true}');
+    expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(ledger);
+    expect(await readFile(join(project, ".teamsmith/team.json"), "utf8")).toBe(receipt);
+  }, 20000);
+
+  it("blocks mismatched archives and unreported verifier sessions without claiming resumability", async () => {
+    const { project, writer } = await fixture();
+    await runTeam({ project, concurrency: 1, adapter: { id: "test", async *execute() {
+      yield { type: "usage", input: 3, cached: 0, output: 1 };
+      yield { type: "report", report: { outcome: "blocked", summary: "known stopped attempt", findings: ["blocked"], evidence: [] } };
+    } } });
+    let review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(true);
+    const receipt = review.receipt!;
+    const archive = join(project, ".teamsmith", `team-${receipt.id}-attempt-${receipt.attempt}.json`);
+    await writeFile(archive, "partial archive from interrupted write");
+    review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(false);
+    expect(review.reasons.join(" ")).toMatch(/archive differs/);
+    const ledgerBefore = await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8");
+    await expect(resumeTeam({ project, adapter: adapter(), recoveryToken: review.recoveryToken })).rejects.toThrow(/archive differs/);
+    expect(await readFile(archive, "utf8")).toBe("partial archive from interrupted write");
+    expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(ledgerBefore);
+    // Simulate a final verifier whose process disappeared before usage/report delivery.
+    await writer.append("agent.spawned", { agent_id: "integration-interrupted", data: { execution: "interrupted-global", mode: "integration_verify", provider: "test" } });
+    review = await inspectTeamRecovery(project);
+    expect(review.canResume).toBe(false);
+    expect(review.reasons.join(" ")).toMatch(/verifier session is still running or unreconciled/);
   }, 20000);
 
 });

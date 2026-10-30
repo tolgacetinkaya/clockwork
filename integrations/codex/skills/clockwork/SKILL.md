@@ -64,6 +64,22 @@ The `.teamsmith` directory is private orchestration state: mutate it only via CL
   Budget reservations bound concurrent admission, not provider spending. A stopped
   team receipt requires manual recovery review; do not automatically retry it.
 
+## Reviewed panel execution and recovery
+
+The target project panel can explicitly enable the local Codex runner with
+`cw ui --enable-execution --port <free-port>` plus the confirmed model/sandbox
+options. Mission control supports edited plans, revision-bound approval and an
+explicit start action. Never treat saving a draft as permission to run workers.
+
+Include meaningful `verification.global_gates` for whole-project acceptance. The
+team runs a fresh read-only final verifier after integration; absent gates mean
+not configured, not verified. Do not weaken isolation for write-requiring tests.
+
+For a stopped team, inspect preserved files and recovery blockers before the
+user explicitly resumes the reviewed token. Accepted deliveries stay integrated;
+failed/rework tasks use new worktrees and old attempts remain archived. Unknown
+usage, stale locks, conflicts and changed integration require manual resolution.
+
 ## User input and completion
 
 At unit boundaries, use `cw commands pull` to read panel requests. Persist a

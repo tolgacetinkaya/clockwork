@@ -20,6 +20,7 @@ import { usePanelUI } from "./state.js";
 import { Mark } from "./ui.js";
 const navigation = [
   { id: "overview", label: "Overview", Icon: LayoutDashboard },
+  { id: "mission", label: "Mission control", Icon: Play },
   { id: "workboard", label: "Workboard", Icon: Columns3 },
   { id: "team", label: "Team", Icon: Users },
   { id: "activity", label: "Activity", Icon: Activity },

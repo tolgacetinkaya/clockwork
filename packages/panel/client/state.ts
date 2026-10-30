@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "overview" | "workboard" | "team" | "activity" | "decisions";
+export type View = "overview" | "mission" | "workboard" | "team" | "activity" | "decisions";
 export type Filter = "all" | "active" | "waiting" | "accepted" | "attention";
 export type Connection = "connecting" | "live" | "reconnecting" | "stale";
 interface UIState {

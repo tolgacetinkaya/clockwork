@@ -17,6 +17,8 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 import YAML from "yaml";
 import {
+  atomicWrite,
+  withStorageLock,
   buildAgentDefinition,
   buildUnitPrompt,
   buildVerifierPrompt,
@@ -65,7 +67,7 @@ import {
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
 import { CodexAdapter } from "@clockwork/adapter-codex";
-import { runTeam, runUnit } from "@clockwork/runner";
+import { inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
 
 const TS_DIR = ".teamsmith";
 const LEDGER = "ledger.jsonl";
@@ -324,7 +326,8 @@ async function cmdGuardSet(cwd: string, args: ParsedArgs): Promise<CliResult> {
 
 async function setControl(cwd: string, control: { paused: boolean; kill: boolean }): Promise<CliResult> {
   await mkdir(join(cwd, TS_DIR), { recursive: true });
-  await writeFile(join(cwd, TS_DIR, "control.json"), JSON.stringify(control), "utf8");
+  const controlPath = join(cwd, TS_DIR, "control.json");
+  await withStorageLock(controlPath, () => atomicWrite(controlPath, JSON.stringify(control)));
   return ok(JSON.stringify(control));
 }
 
@@ -442,11 +445,23 @@ async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
   if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) {
     return fail(`invalid port: ${args.flags.port}`);
   }
-  const handle = await startPanel({ projectDir: cwd, ...(port !== undefined ? { port } : {}) });
+  const enabled = args.flags["enable-execution"];
+  if (enabled !== undefined && enabled !== "true") return fail("enable-execution is a flag");
+  const timeoutMs = args.flags["timeout-ms"] === undefined ? 900000 : Number(args.flags["timeout-ms"]);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3600000) return fail("timeout-ms must be between 1000 and 3600000");
+  const windowsSandbox = args.flags["windows-sandbox"];
+  if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
+  const adapter = enabled ? new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }) : undefined;
+  const execution = adapter ? {
+    run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, model: args.flags.model }),
+    inspect: inspectTeamRecovery,
+    resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => resumeTeam({ ...options, adapter, model: args.flags.model }),
+  } : undefined;
+  const handle = await startPanel({ projectDir: cwd, ...(port !== undefined ? { port } : {}), execution });
   // The server keeps the event loop alive; Ctrl+C shuts it down cleanly.
-  process.on("SIGINT", () => {
-    void handle.close().then(() => process.exit(0));
-  });
+  const stop = () => { void handle.close().then(() => process.exit(0)); };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
   return ok(`panel running at ${handle.url} â€” Ctrl+C to stop`);
 }
 
