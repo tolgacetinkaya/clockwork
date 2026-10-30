@@ -1,3 +1,4 @@
+import { t, useI18n, locales, localeNames } from "./i18n.js";
 import {
   LayoutDashboard,
   Columns3,
@@ -39,6 +40,7 @@ export function Layout({
   changeControl: (patch: Partial<ControlState>) => void;
   children: ReactNode;
 }) {
+  const { locale, setLocale } = useI18n();
   const view = usePanelUI((s) => s.view),
     setView = usePanelUI((s) => s.setView),
     connection = usePanelUI((s) => s.connection),
@@ -48,11 +50,11 @@ export function Layout({
       snapshot.state.openCheckpoints.length
     : 0;
   const requested = snapshot?.control.kill
-    ? "Stop requested"
+    ? t("Stop requested")
     : snapshot?.control.paused
-      ? "Pause requested"
+      ? t("Pause requested")
       : snapshot?.state.paused
-        ? "Paused in ledger"
+        ? t("Paused in ledger")
         : null;
   const canResume =
     snapshot?.control.paused ||
@@ -68,7 +70,7 @@ export function Layout({
             event.preventDefault();
             setView("overview");
           }}
-          aria-label="Clockwork overview"
+          aria-label={t("Clockwork overview")}
         >
           <Mark />
           <span>
@@ -80,17 +82,18 @@ export function Layout({
             <Terminal size={17} />
           </span>
           <span>
-            <strong>Local workspace</strong>
+            <strong>{t("Local workspace")}</strong>
             <small>
               {snapshot?.mode === "recorded-demo"
-                ? "Recorded demo"
-                : "Local project"}
+                ? t("Recorded demo")
+                : t("Local project")}
             </small>
           </span>
           <ChevronRight size={14} />
         </div>
-        <p className="sidebar-label">WORKSPACE</p>
-        <nav aria-label="Workspace navigation">
+        <p className="sidebar-label">{t("WORKSPACE")}
+            </p>
+        <nav aria-label={t("Workspace navigation")}>
           {navigation.map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -99,7 +102,8 @@ export function Layout({
               onClick={() => setView(id)}
             >
               <Icon size={18} strokeWidth={1.7} />
-              <span>{label}</span>
+              <span>{t(label)}
+            </span>
               {id === "decisions" && decisions ? (
                 <span className="nav-count">{decisions}</span>
               ) : id === "activity" && connection === "live" ? (
@@ -109,14 +113,29 @@ export function Layout({
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <label className="language-selector">
+            <span>{t("Language")}
+            </span>
+            <select
+              value={locale}
+              onChange={(event) => {
+                const next = locales.find((item) => item === event.target.value);
+                if (next) setLocale(next);
+              }}
+            >
+              {locales.map((item) => (
+                <option key={item} value={item} lang={item === "pt" ? "pt-BR" : item}>
+                  {localeNames[item]}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="local-note">
             <span className="local-dot" />
             <div>
-              <strong>Yours, locally.</strong>
+              <strong>{t("Yours, locally.")}</strong>
               <p>
-                Your workspace stays
-                <br />
-                on this machine.
+                {t("Your workspace stays on this machine.")}
               </p>
             </div>
           </div>
@@ -127,7 +146,8 @@ export function Layout({
             className="repository-link"
           >
             <Mark small />
-            <span>Open-source, open-ended.</span>
+            <span>{t("Open-source, open-ended.")}
+            </span>
             <ExternalLink size={13} />
           </a>
           <div className="sidebar-version">
@@ -139,10 +159,11 @@ export function Layout({
       <div className="main-shell">
         <header className="topbar">
           <div className="breadcrumb">
-            <span>Workspace</span>
+            <span>{t("Workspace")}
+            </span>
             <ChevronRight size={13} />
             <strong>
-              {navigation.find((item) => item.id === view)?.label}
+              {t(navigation.find((item) => item.id === view)?.label ?? "Overview")}
             </strong>
           </div>
           <div className="topbar-actions">
@@ -159,17 +180,17 @@ export function Layout({
               )}
               <span>
                 {connection === "live"
-                  ? "Live sync"
+                  ? t("Live sync")
                   : connection === "connecting"
-                    ? "Connecting"
+                    ? t("Connecting")
                     : connection === "reconnecting"
-                      ? "Reconnecting"
-                      : "Data is stale"}
+                      ? t("Reconnecting")
+                      : t("Data is stale")}
               </span>
             </span>
             <span className="topbar-divider" />
-            <span className="operator-avatar" title="Local operator">
-              YOU
+            <span className="operator-avatar" title={t("Local operator")}>
+              {t("YOU")}
             </span>
           </div>
         </header>
@@ -178,11 +199,11 @@ export function Layout({
             <span>
               <span className="context-dot" />
               {snapshot?.mode === "recorded-demo"
-                ? "RECORDED DEMO"
-                : "LOCAL ORCHESTRATION"}
+                ? t("RECORDED DEMO")
+                : t("LOCAL ORCHESTRATION")}
               <span className="context-slash">/</span>
               <span className="context-run">
-                {snapshot?.state.runId ?? "Waiting for a run"}
+                {snapshot?.state.runId ?? t("Waiting for a run")}
               </span>
             </span>
             <div className="run-actions">
@@ -196,7 +217,7 @@ export function Layout({
                   onClick={() => changeControl({ paused: false, kill: false })}
                 >
                   <Play size={14} />
-                  Resume
+                  {t("Resume")}
                 </button>
               ) : (
                 <button
@@ -205,13 +226,13 @@ export function Layout({
                   onClick={() => changeControl({ paused: true })}
                 >
                   <Pause size={14} />
-                  Pause
+                  {t("Pause")}
                 </button>
               )}
               <button
                 className="icon-button stop-button"
-                title="Request stop"
-                aria-label="Request stop"
+                title={t("Request stop")}
+                aria-label={t("Request stop")}
                 disabled={
                   disabled || controlBusy || Boolean(snapshot?.control.kill)
                 }
@@ -224,7 +245,7 @@ export function Layout({
                 onClick={() => setDrawer("note")}
               >
                 <Plus size={14} />
-                Add note
+                {t("Add note")}
               </button>
             </div>
           </div>
@@ -232,14 +253,14 @@ export function Layout({
           <footer className="workspace-footer">
             <span>
               <Mark small />
-              Built for the work between the prompts.
+              {t("Built for the work between the prompts.")}
             </span>
             <span>
               {snapshot
-                ? `${snapshot.eventCount} events · seq ${snapshot.state.lastSeq}`
-                : "Connecting to local event stream"}
+                ? t("{count} events · seq {seq}", { count: snapshot.eventCount, seq: snapshot.state.lastSeq })
+                : t("Connecting to local event stream")}
               <span className="footer-dot" />
-              Local-first by design
+              {t("Local-first by design")}
             </span>
           </footer>
         </main>

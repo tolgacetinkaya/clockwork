@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import type { PanelSnapshot } from "../src/protocol.js";
 import type { Spec } from "../../core/src/spec/types.js";
 export interface PlanTask { id: string; description: string; owns: string; acceptance: string; dependencies: string; estimate: number }
@@ -20,18 +21,18 @@ export function planSpec(goal: string, tasks: PlanTask[], budget: number, gates:
 }
 export function planIssues(spec: Spec, concurrency: number): string[] {
   const issues: string[] = [];
-  if (!spec.meta.goal) issues.push("Describe the mission goal.");
-  if (!spec.work_units.length) issues.push("Add at least one task.");
-  if (!Number.isFinite(Number(spec.priorities.budget_target)) || Number(spec.priorities.budget_target) <= 0) issues.push("Set a positive token budget.");
-  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) issues.push("Concurrency must be between 1 and 8.");
-  if (!spec.verification?.global_gates?.length) issues.push("Add a combined verification command.");
+  if (!spec.meta.goal) issues.push(t("Describe the mission goal."));
+  if (!spec.work_units.length) issues.push(t("Add at least one task."));
+  if (!Number.isFinite(Number(spec.priorities.budget_target)) || Number(spec.priorities.budget_target) <= 0) issues.push(t("Set a positive token budget."));
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) issues.push(t("Concurrency must be between 1 and 8."));
+  if (!spec.verification?.global_gates?.length) issues.push(t("Add a combined verification command."));
   const ids = new Set(spec.work_units.map((unit) => unit.id));
-  if (ids.size !== spec.work_units.length) issues.push("Task IDs must be unique.");
+  if (ids.size !== spec.work_units.length) issues.push(t("Task IDs must be unique."));
   for (const unit of spec.work_units) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(unit.id)) issues.push("Use letters, numbers, hyphens or underscores for task IDs.");
-    if (!Number.isFinite(Number(unit.budget_est)) || Number(unit.budget_est) <= 0) issues.push(`${unit.id || "Task"}: add a positive estimated token budget.`);
-    if (!unit.description || !unit.owns.length || !unit.acceptance.length) issues.push(`${unit.id || "Task"}: add description, owned scope and acceptance criteria.`);
-    if (unit.depends_on?.some((id) => !ids.has(id) || id === unit.id)) issues.push(`${unit.id}: dependencies must refer to other tasks.`);
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(unit.id)) issues.push(t("Use letters, numbers, hyphens or underscores for task IDs."));
+    if (!Number.isFinite(Number(unit.budget_est)) || Number(unit.budget_est) <= 0) issues.push(t("{task}: add a positive estimated token budget.", { task: unit.id || t("Task") }));
+    if (!unit.description || !unit.owns.length || !unit.acceptance.length) issues.push(t("{task}: add description, owned scope and acceptance criteria.", { task: unit.id || t("Task") }));
+    if (unit.depends_on?.some((id) => !ids.has(id) || id === unit.id)) issues.push(t("{task}: dependencies must refer to other tasks.", { task: unit.id }));
   }
   const visiting = new Set<string>(), visited = new Set<string>();
   const cycle = (id: string): boolean => {
@@ -41,7 +42,7 @@ export function planIssues(spec: Spec, concurrency: number): string[] {
     if (spec.work_units.find((unit) => unit.id === id)?.depends_on?.some(cycle)) return true;
     visiting.delete(id); visited.add(id); return false;
   };
-  if (spec.work_units.some((unit) => cycle(unit.id))) issues.push("Dependencies must not form a cycle.");
+  if (spec.work_units.some((unit) => cycle(unit.id))) issues.push(t("Dependencies must not form a cycle."));
   return [...new Set(issues)];
 }
 

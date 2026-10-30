@@ -76,6 +76,8 @@ project's state. A new project initially has no run history. To prepare and laun
 reviewed Codex teams from a target repository, explicitly enable the local runner
 with `ui --enable-execution --port 47833`. See [Mission control](docs/mission-control.md)
 for plan approval, crew tracking, final verification and controlled recovery.
+The panel also includes an event-driven companion and five additional language
+packs. See [companion and languages](docs/companion-and-locales.md).
 
 ## Execution boundaries
 

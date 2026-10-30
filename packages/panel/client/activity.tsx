@@ -1,3 +1,4 @@
+import { t, useI18n } from "./i18n.js";
 import { useState } from "react";
 import { Search, ChevronRight } from "lucide-react";
 import type { LedgerEvent } from "@clockwork/core";
@@ -13,6 +14,7 @@ export function ActivityList({
   events: LedgerEvent[];
   snapshot: PanelSnapshot;
 }) {
+  useI18n();
   return (
     <div className="event-list">
       {[...events].reverse().map((event) => (
@@ -44,6 +46,7 @@ export function ActivityList({
   );
 }
 export function ActivityView({ snapshot }: { snapshot: PanelSnapshot }) {
+  useI18n();
   const [search, setSearch] = useState("");
   const events = snapshot.events.filter((event) =>
     `${event.type} ${event.unit_id ?? ""} ${event.agent_id ?? ""}`
@@ -53,22 +56,21 @@ export function ActivityView({ snapshot }: { snapshot: PanelSnapshot }) {
   return (
     <>
       <PageHeading
-        eyebrow="THE EVENT LEDGER"
-        title="Nothing lost between the handoffs."
-        subtitle="An inspectable record of what happened. New events arrive over the shared live stream."
+        eyebrow={t("THE EVENT LEDGER")}
+        title={t("Nothing lost between the handoffs.")}
+        subtitle={t("An inspectable record of what happened. New events arrive over the shared live stream.")}
       />
       <div className="activity-toolbar">
         <span>
-          {snapshot.eventCount} events recorded
-          {snapshot.eventCount > snapshot.events.length
-            ? ` · showing the latest ${snapshot.events.length}`
+          {t("{count} events recorded", { count: snapshot.eventCount })}{snapshot.eventCount > snapshot.events.length
+            ? t(" · showing the latest {count}", { count: snapshot.events.length })
             : ""}
         </span>
         <label className="search-field">
           <Search size={15} />
           <input
-            aria-label="Search activity"
-            placeholder="Filter events or agents…"
+            aria-label={t("Search activity")}
+            placeholder={t("Filter events or agents…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -78,7 +80,7 @@ export function ActivityView({ snapshot }: { snapshot: PanelSnapshot }) {
         {events.length ? (
           <ActivityList events={events} snapshot={snapshot} />
         ) : (
-          <Empty title="A quiet moment">No events match this view.</Empty>
+          <Empty title={t("A quiet moment")}>{t("No events match this view.")}</Empty>
         )}
       </section>
     </>

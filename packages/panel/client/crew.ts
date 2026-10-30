@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import type { PanelSnapshot } from "../src/protocol.js";
 
 /** Conservative badges from visible evidence only, never lifetime totals. */
@@ -30,12 +31,12 @@ export function crewRole(snapshot: Pick<PanelSnapshot, "events">, agent: PanelSn
   return mode === "integration_verify" ? "Final review" : mode === "verify" || agent.status === "verifying" ? "Verifier" : "Builder";
 }
 export function crewRunFlag(snapshot: Pick<PanelSnapshot, "state" | "control" | "launch">) {
-  return snapshot.state.outcome === "done" ? "Run complete" : snapshot.state.outcome === "abandoned" || snapshot.control.kill ? "Run stopped" : snapshot.control.paused || snapshot.state.paused ? "Run paused" : snapshot.launch?.status === "completed" ? "Team complete" : snapshot.launch?.status === "stopped" || snapshot.launch?.status === "error" ? "Team stopped" : null;
+  return snapshot.state.outcome === "done" ? t("Run complete") : snapshot.state.outcome === "abandoned" || snapshot.control.kill ? t("Run stopped") : snapshot.control.paused || snapshot.state.paused ? t("Run paused") : snapshot.launch?.status === "completed" ? t("Team complete") : snapshot.launch?.status === "stopped" || snapshot.launch?.status === "error" ? t("Team stopped") : null;
 }
 
 export function finalReviewOutcome(snapshot: Pick<PanelSnapshot, "events">, agentId: string): string | null {
   const report = [...snapshot.events].reverse().find((event) => event.agent_id === agentId && event.type === "agent.completed")?.data?.report;
   if (!report || typeof report !== "object") return null;
   const outcome = (report as Record<string, unknown>).outcome;
-  return outcome === "accepted" ? "Review report: accepted" : outcome === "rework" ? "Review report: needs rework" : outcome === "blocked" ? "Review report: blocked" : null;
+  return outcome === "accepted" ? t("Review report: accepted") : outcome === "rework" ? t("Review report: needs rework") : outcome === "blocked" ? t("Review report: blocked") : null;
 }

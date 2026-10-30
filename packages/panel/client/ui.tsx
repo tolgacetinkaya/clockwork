@@ -1,3 +1,4 @@
+import { t, useI18n } from "./i18n.js";
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import {
@@ -60,19 +61,20 @@ export function Avatar({
   );
 }
 export function Status({ value }: { value: string }) {
+  useI18n();
   const labels: Record<string, string> = {
-    pending: "Queued",
-    running: "In progress",
-    verifying: "In review",
-    rework: "Rework",
-    accepted: "Accepted",
-    failed: "Failed",
-    cancelled: "Cancelled",
-    blocked: "Blocked",
-    completed: "Completed",
-    working: "Working",
-    idle: "No active work",
-    attention: "Needs attention",
+    pending: t("Queued"),
+    running: t("In progress"),
+    verifying: t("In review"),
+    rework: t("Rework"),
+    accepted: t("Accepted"),
+    failed: t("Failed"),
+    cancelled: t("Cancelled"),
+    blocked: t("Blocked"),
+    completed: t("Completed"),
+    working: t("Working"),
+    idle: t("No active work"),
+    attention: t("Needs attention"),
   };
   const Icon =
     value === "accepted" || value === "completed"
@@ -154,6 +156,7 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
 }) {
+  useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -185,7 +188,7 @@ export function Dialog({
             autoFocus
             className="icon-button"
             onClick={onClose}
-            aria-label="Close details"
+            aria-label={t("Close details")}
           >
             <X size={20} />
           </button>

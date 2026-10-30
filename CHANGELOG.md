@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added an original event-driven panel companion with recorded progress, review alerts and quiet controls.
+- Added persistent Turkish, Spanish, German, French and Brazilian Portuguese interface language packs.
+
 - Added local Mission control: editable task plans, revision-bound approval, explicit Codex launch and streamed execution state.
 - Added whole-project read-only verification and reviewed recovery that preserves accepted deliveries and prior attempts.
 - Added crew stage cards and evidence-based recent-window contribution badges.

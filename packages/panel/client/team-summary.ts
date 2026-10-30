@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import type { PanelSnapshot } from "../src/protocol.js";
 
 /** Counts recorded activity; no process or provider health is inferred. */
@@ -31,11 +32,11 @@ export function unitActivity(snapshot: PanelSnapshot, id: string) {
     agent.units.includes(id) && agent.status === (stage === "Verification" ? "verifying" : "working"),
   );
   const terminal = ["accepted", "failed", "cancelled"].includes(unit.status);
-  const readiness = terminal ? null : snapshot.state.outcome === "done" ? "Run complete" : stopped ? "Run stopped" : paused ? "Run paused" :
-    unit.status === "rework" ? "Needs rework" :
+  const readiness = terminal ? null : snapshot.state.outcome === "done" ? t("Run complete") : stopped ? t("Run stopped") : paused ? t("Run paused") :
+    unit.status === "rework" ? t("Needs rework") :
     unit.status === "pending" || unit.status === "blocked"
-      ? waitingOn.length ? "Waiting on dependencies" : "Dependencies satisfied"
-      : stage === "Production" && !actors.length ? "Awaiting verification" :
-        stage ? `${stage} recorded` : null;
+      ? waitingOn.length ? t("Waiting on dependencies") : t("Dependencies satisfied")
+      : stage === "Production" && !actors.length ? t("Awaiting verification") :
+        stage ? t("{stage} recorded", { stage: t(stage) }) : null;
   return { waitingOn, stage, actors, readiness };
 }

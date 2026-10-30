@@ -1,3 +1,4 @@
+import { t, useI18n } from "./i18n.js";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -25,6 +26,7 @@ import { Avatar, SectionHeading, TextLink } from "./ui.js";
 import { WorkList } from "./work.js";
 
 export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
+  useI18n();
   const setView = usePanelUI((s) => s.setView),
     setFilter = usePanelUI((s) => s.setFilter),
     setDrawer = usePanelUI((s) => s.setDrawer);
@@ -45,37 +47,29 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
       <section className="overview-hero">
         <div className="hero-copy">
           <p className="eyebrow">
-            <span className="tiny-square" /> YOUR WORKSPACE, IN SYNC
-          </p>
-          <h1>
-            Your team,
-            <br />
-            <em>in motion.</em>
+            <span className="tiny-square" />{t("YOUR WORKSPACE, IN SYNC")}</p>
+          <h1>{t("Your team,")}<br />
+            <em>{t("in motion.")}</em>
           </h1>
-          <p className="hero-description">
-            Every work unit, handoff, and decision.
-            <br className="hidden sm:block" /> A clear view of the work as it
-            unfolds.
-          </p>
+          <p className="hero-description">{t("Every work unit, handoff, and decision.")}<br className="hidden sm:block" />{t("A clear view of the work as it unfolds.")}</p>
           <button
             className="primary-button"
             onClick={() => setView("workboard")}
-          >
-            Explore the workboard <ArrowUpRight size={16} />
+          >{t("Explore the workboard")}<ArrowUpRight size={16} />
           </button>
         </div>
         <div className="run-brief">
           <div className="run-brief-top">
-            <span className="eyebrow">CURRENT RUN</span>
+            <span className="eyebrow">{t("CURRENT RUN")}</span>
             <span
               className={`run-pill ${snapshot.state.outcome === "done" ? "complete" : ""}`}
             >
               <span />
               {snapshot.state.outcome === "done"
-                ? "Complete"
+                ? t("Complete")
                 : snapshot.state.phase
-                  ? title(snapshot.state.phase)
-                  : "Awaiting a run"}
+                  ? t(title(snapshot.state.phase))
+                  : t("Awaiting a run")}
             </span>
           </div>
           <div className="run-orbit" aria-hidden="true">
@@ -96,12 +90,12 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
             {snapshot.spec?.goal ??
               (snapshot.state.runId
                 ? title(snapshot.state.runId.replace(/^run-/, ""))
-                : "Your next great piece of work")}
+                : t("Your next great piece of work"))}
           </h2>
-          <p className="run-id">{snapshot.state.runId ?? "No run started"}</p>
+          <p className="run-id">{snapshot.state.runId ?? t("No run started")}</p>
           <div
             className="run-progress"
-            aria-label={`${accepted} of ${units.length} work units accepted`}
+            aria-label={t("{accepted} of {count} work units accepted", { accepted, count: units.length })}
           >
             {units.length ? (
               units.map(([id, unit]) => (
@@ -122,18 +116,16 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
           </div>
           <div className="run-brief-footer">
             <span>
-              {accepted} of {units.length} units accepted
-            </span>
-            <span>
-              Spec{" "}
+              {t("{accepted} of {count} units accepted", { accepted, count: units.length })}</span>
+            <span>{t("Spec")}{" "}
               {snapshot.state.specVersion
                 ? `v${snapshot.state.specVersion}`
-                : "not recorded"}
+                : t("not recorded")}
             </span>
           </div>
         </div>
       </section>
-      <section className="metrics-strip" aria-label="Run metrics">
+      <section className="metrics-strip" aria-label={t("Run metrics")}>
         <button
           onClick={() => {
             setFilter("accepted");
@@ -141,16 +133,15 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
           }}
         >
           <span className="metric-label">
-            <ShieldCheck size={15} /> Work accepted
-          </span>
+            <ShieldCheck size={15} />{t("Work accepted")}</span>
           <strong>
             {String(accepted).padStart(2, "0")}
             <small>/ {String(units.length).padStart(2, "0")}</small>
           </strong>
           <span className="metric-detail">
             {units.length
-              ? `${Math.round((accepted / units.length) * 100)}% of this run`
-              : "Ready when you are"}
+              ? t("{percent}% of this run", { percent: Math.round((accepted / units.length) * 100) })
+              : t("Ready when you are")}
           </span>
         </button>
         <button
@@ -160,8 +151,7 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
           }}
         >
           <span className="metric-label">
-            <Activity size={15} /> Active work
-          </span>
+            <Activity size={15} />{t("Active work")}</span>
           <strong>
             {String(active).padStart(2, "0")}
             <span className="metric-dots">
@@ -172,36 +162,34 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
           </strong>
           <span className="metric-detail">
             {active
-              ? "Executing or in verification"
-              : "No units currently executing"}
+              ? t("Executing or in verification")
+              : t("No units currently executing")}
           </span>
         </button>
         <div>
           <span className="metric-label">
-            <Layers size={15} /> Recorded usage
-          </span>
+            <Layers size={15} />{t("Recorded usage")}</span>
           <strong>
             {compact(snapshot.budget.totalSpent)}
-            <small> tokens</small>
+            <small>{" "}{t("tokens")}</small>
           </strong>
           <span
             className={`metric-detail ${spentPercent !== null && spentPercent > 100 ? "warning-text" : ""}`}
           >
             {spentPercent === null
-              ? "No budget target recorded"
-              : `${spentPercent}% of ${compact(snapshot.budget.target!)} target`}
+              ? t("No budget target recorded")
+              : t("{percent}% of {target} target", { percent: spentPercent, target: compact(snapshot.budget.target!) })}
           </span>
         </div>
         <button onClick={() => setView("decisions")}>
           <span className="metric-label">
-            <Inbox size={15} /> Needs your input
-          </span>
+            <Inbox size={15} />{t("Needs your input")}</span>
           <strong>
             {String(decisions).padStart(2, "0")}
             <ArrowUpRight size={19} />
           </strong>
           <span className="metric-detail">
-            {decisions ? "Keep the work moving" : "Nothing waiting on you"}
+            {decisions ? t("Keep the work moving") : t("Nothing waiting on you")}
           </span>
         </button>
       </section>
@@ -209,32 +197,26 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
         <div className="min-w-0">
           <section className="surface work-surface">
             <SectionHeading
-              eyebrow="THE WORK"
-              title="One team. Moving parts."
+              eyebrow={t("THE WORK")}
+              title={t("One team. Moving parts.")}
               action={
-                <TextLink onClick={() => setView("workboard")}>
-                  All work
-                </TextLink>
+                <TextLink onClick={() => setView("workboard")}>{t("All work")}</TextLink>
               }
             />
             <WorkList snapshot={snapshot} />
             <div className="surface-footer">
               <span>
-                <GitBranch size={13} /> Dependencies guide the order of work
-              </span>
-              <button onClick={() => setView("activity")}>
-                View handoffs <ArrowRight size={13} />
+                <GitBranch size={13} />{t("Dependencies guide the order of work")}</span>
+              <button onClick={() => setView("activity")}>{t("View handoffs")}<ArrowRight size={13} />
               </button>
             </div>
           </section>
           <section className="activity-preview">
             <SectionHeading
-              eyebrow="THE PAPER TRAIL"
-              title="Latest from the run"
+              eyebrow={t("THE PAPER TRAIL")}
+              title={t("Latest from the run")}
               action={
-                <TextLink onClick={() => setView("activity")}>
-                  All activity
-                </TextLink>
+                <TextLink onClick={() => setView("activity")}>{t("All activity")}</TextLink>
               }
             />
             {lastEvent ? (
@@ -245,23 +227,21 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
                   <p>
                     {lastEvent.unit_id
                       ? unitTitle(snapshot, lastEvent.unit_id)
-                      : `Recorded by ${lastEvent.actor}`}
+                      : t("Recorded by {actor}", { actor: lastEvent.actor })}
                   </p>
                 </div>
                 <time dateTime={lastEvent.ts}>{time(lastEvent.ts)}</time>
               </div>
             ) : (
-              <p className="muted">
-                The first recorded event will appear here.
-              </p>
+              <p className="muted">{t("The first recorded event will appear here.")}</p>
             )}
           </section>
         </div>
         <aside className="overview-aside">
           <section className="surface team-preview">
             <SectionHeading
-              eyebrow="THE SPECIALISTS"
-              title="Your assembled team"
+              eyebrow={t("THE SPECIALISTS")}
+              title={t("Your assembled team")}
               action={
                 <span className="count-pill">{snapshot.agents.length}</span>
               }
@@ -275,10 +255,10 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
                       <strong>{title(agent.id)}</strong>
                       <small>
                         {snapshot.state.outcome
-                          ? "Run complete"
+                          ? t("Run complete")
                           : agent.status === "idle"
-                            ? "No active work recorded"
-                            : title(agent.status)}
+                            ? t("No active work recorded")
+                            : t(title(agent.status))}
                       </small>
                     </span>
                     <ChevronRight size={15} />
@@ -286,43 +266,34 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
                 ))}
               </div>
             ) : (
-              <p className="aside-copy">
-                Agents appear when assignments or agent events are recorded.
-              </p>
+              <p className="aside-copy">{t("Agents appear when assignments or agent events are recorded.")}</p>
             )}
-            <button className="full-link" onClick={() => setView("team")}>
-              Meet the team <ArrowRight size={15} />
+            <button className="full-link" onClick={() => setView("team")}>{t("Meet the team")}<ArrowRight size={15} />
             </button>
           </section>
           <section className="operator-card">
             <span className="operator-symbol">
               <Terminal size={19} />
             </span>
-            <p className="eyebrow">YOU'RE PART OF THE LOOP</p>
-            <h3>
-              A nudge in the
-              <br />
-              <em>right direction.</em>
+            <p className="eyebrow">{t("YOU'RE PART OF THE LOOP")}</p>
+            <h3>{t("A nudge in the")}<br />
+              <em>{t("right direction.")}</em>
             </h3>
-            <p>
-              Leave context for the orchestrator without interrupting your view
-              of the work.
-            </p>
+            <p>{t("Leave context for the orchestrator without interrupting your view of the work.")}</p>
             <button
               className="secondary-button"
               onClick={() => setDrawer("note")}
             >
-              <Plus size={15} /> Add a note
-            </button>
+              <Plus size={15} />{t("Add a note")}</button>
           </section>
         </aside>
       </div>
       <section className="usage-section">
         <SectionHeading
-          eyebrow="RESOURCE AWARE"
-          title="Where the effort goes"
+          eyebrow={t("RESOURCE AWARE")}
+          title={t("Where the effort goes")}
           action={
-            <span className="small-muted">Tokens, not a billing estimate</span>
+            <span className="small-muted">{t("Tokens, not a billing estimate")}</span>
           }
         />
         <div className="usage-allocation">
@@ -345,16 +316,12 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
               </div>
             ))
           ) : (
-            <p className="muted">
-              Usage appears when budget events are recorded.
-            </p>
+            <p className="muted">{t("Usage appears when budget events are recorded.")}</p>
           )}
         </div>
         {snapshot.budget.unattributed > 0 ? (
           <p className="small-muted mt-4">
-            {number(snapshot.budget.unattributed)} tokens are not attributed to
-            a work unit.
-          </p>
+            {t("{count} tokens are not attributed to a work unit.", { count: number(snapshot.budget.unattributed) })}</p>
         ) : null}
       </section>
     </>
