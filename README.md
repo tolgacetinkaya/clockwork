@@ -7,8 +7,9 @@ specialized AI teams. It decomposes work into units, records a reviewable team
 specification, tracks dependencies and budgets, and keeps an append-only event
 ledger for verification and session recovery.
 
-The core is platform-independent TypeScript. The current execution adapter is
-for Claude Code; other coding-agent adapters are planned.
+The core is platform-independent TypeScript. Execution integrations include the
+Claude Code plugin and an experimental local Codex CLI unit runner. Gemini and
+direct model API adapters are planned.
 
 ## Current status
 
@@ -22,16 +23,26 @@ Implemented:
 - YAML team specifications, dependency checks, and versioned amendments.
 - Event admission, state replay, budget accounting, and retrospective records.
 - Claude Code prompt generation and a PreToolUse approval hook.
-- A local management panel, control requests, and a durable command queue.
+- Local Codex producer/verifier execution with shared lifecycle and delivery gates.
+- A local management panel with reviewed mission launch, controlled recovery,
+  crew contribution badges, dependency waiting reasons, and a durable command queue.
+- Fresh whole-project verification of the integrated result against configured gates.
+- Goal-driven task and team proposals with explicit review before execution. See [goal planning](docs/goal-planning.md).
+- Separate production and independent review model selections. See [model review](docs/model-review.md).
+- Task watchdogs, durable report acknowledgements and explicit recovery blocking.
+  See [task watchdog](docs/task-watchdog.md).
+- Command-backed verification receipts, protected existing tests, delivery integrity
+  checks and dependency-ordered ownership. See [verification trust](docs/verification-trust.md).
 
-The panel currently uses plain HTML, CSS, and JavaScript, with polling. A React
-and Tailwind redesign and live event streaming are planned. The panel container
+The panel uses React 19, Tailwind CSS, and a shared SSE stream. Overview,
+workboard, team, activity, and decisions share one TanStack Query cache; Zustand
+keeps UI state separate. The panel container
 shows recorded activity; it does not start an orchestrator or AI agents.
 
 ## Get started
 
-Requires **Node.js 24 or newer**, npm, and Git. Docker is optional. Claude Code
-is needed only for the execution integration, not for tests or the demo panel.
+Requires **Node.js 24 or newer**, npm, and Git. Docker is optional. Executing AI
+work needs Claude Code or the local Codex CLI; tests and the demo panel need neither.
 
 ```sh
 git clone https://github.com/tolgacetinkaya/clockwork.git
@@ -67,7 +78,12 @@ first launch. Commands and control requests affect the copy. With no command
 consumer running in the demo, queued notes wait to be handled.
 
 Without Docker, `npm run -s clockwork -- ui --port 47831` serves the current
-project's state. A new project initially has no run history.
+project's state. A new project initially has no run history. To prepare and launch
+reviewed Codex teams from a target repository, explicitly enable the local runner
+with `ui --enable-execution --port 47833`. See [Mission control](docs/mission-control.md)
+for plan approval, crew tracking, final verification and controlled recovery.
+The panel also includes an event-driven companion and five additional language
+packs. See [companion and languages](docs/companion-and-locales.md).
 
 ## Execution boundaries
 
@@ -83,6 +99,10 @@ reconcile duplicate delivery against the ledger. See
 [execution hardening](docs/execution-hardening.md) for installation boundaries,
 storage recovery, and known limitations.
 
+For frontend development, run the API on 47831 and `npm run panel:dev` in a
+second terminal. Vite uses 47832 and proxies API/SSE. See
+[panel architecture](docs/panel-architecture.md) for ownership and recovery.
+
 ## Claude Code integration
 
 The plugin entry point is `plugin/`, containing the orchestrator skill and hook
@@ -95,11 +115,23 @@ project root in the trusted launcher's environment. Confirm that the plugin
 and hook are active in the actual session before relying on the guard.
 Pure hook tests do not prove that a live Claude session loaded it.
 
+## Local Codex integration
+
+Codex can produce an approved work unit in a linked Git worktree and verify it in
+an independent read-only session. Its thread/activity/usage/report events feed the
+same ledger and panel. `clockwork codex team --concurrency 2` automatically
+schedules approved units in isolated worktrees, integrates accepted dependencies
+before downstream work, and retains an integration worktree for review. It never
+auto-merges the user branch. See [local Codex setup and boundaries](docs/codex-local.md)
+and [Codex orchestrator instructions](integrations/codex/skills/clockwork/SKILL.md).
+
 ## Architecture and development
 
 ```text
 packages/core/            Specs, ledger, budget, queue, verification, recall
-packages/adapter-claude/  Guard hook and agent prompt builders
+packages/adapter-claude/  Claude guard hook and compatibility prompt exports
+packages/adapter-codex/   Local Codex process and JSONL adapter
+packages/runner/          Shared bounded unit execution and delivery gates
 packages/cli/             CLI entry point
 packages/panel/           Local HTTP server and management panel
 plugin/                   Claude Code plugin and orchestrator skill
@@ -142,4 +174,9 @@ details. Release preparation is described in [docs/releasing.md](docs/releasing.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). Bundled fonts retain their OFL license; see
+[third-party notices](THIRD_PARTY_NOTICES.md).
+
+A transparent native desktop companion preview can run outside the browser with
+`npm run pet:desktop`. See [desktop companion](docs/desktop-companion.md) for
+setup, controls, security boundaries and platform validation.

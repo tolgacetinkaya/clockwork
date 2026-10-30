@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Added an original event-driven panel companion with recorded progress, review alerts and quiet controls.
+- Added persistent Turkish, Spanish, German, French and Brazilian Portuguese interface language packs.
+
+- Added local Mission control: editable task plans, revision-bound approval, explicit Codex launch and streamed execution state.
+- Added whole-project read-only verification and reviewed recovery that preserves accepted deliveries and prior attempts.
+- Added crew stage cards and evidence-based recent-window contribution badges.
+
+- Added panel production/verification stage tracking and dependency waiting reasons.
+- Added `codex team` foreground scheduling (default 2, maximum 8 concurrent units), isolated integration worktrees, dependency integration, budget reservations and durable stop/recovery records.
+
+- Added experimental local Codex producer/verifier execution in linked worktrees, shared execution contracts, live agent activity and token accounting.
+- Added receipt-based delivery checks, pause/stop interruption, failure/usage reconciliation, independent read-only verification and Codex orchestration instructions.
+- Retained the Claude plugin and its hook; Codex ownership checks are delivery gates, not a replacement PreToolUse hook.
+
+- React 19 / Tailwind panel with task, agent, activity, and decision views.
+- Shared SSE snapshots with reconnect recovery, TanStack Query state, and Zustand UI state.
+- Live controls and durable operator requests, plus CLI-to-browser transport tests.
+
 - Initial public source import of the Clockwork prototype.
 - Task specifications, event ledger, budget tracking, command queue, and Claude adapter.
 - Local panel with an optional Docker demo using reviewed historical fixtures.

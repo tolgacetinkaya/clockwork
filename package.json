@@ -7,17 +7,20 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "vitest run",
+    "test": "npm run build && vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck:client --workspace @clockwork/panel",
     "clockwork": "tsx packages/cli/src/bin.ts",
     "check:public": "node scripts/check-public-files.mjs",
-    "check": "npm run typecheck && npm test && npm run check:public"
+    "check": "npm run typecheck && npm test && npm run check:public",
+    "build": "npm run build --workspace @clockwork/panel",
+    "panel:dev": "npm run dev --workspace @clockwork/panel",
+    "pet:desktop": "npm run start --workspace @clockwork/desktop"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^24.0.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
+    "typescript": "^5.6.0",
     "vitest": "^5.0.5"
   },
   "license": "MIT",

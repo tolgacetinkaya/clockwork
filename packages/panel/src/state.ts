@@ -4,10 +4,12 @@
  * shown is `readLedger` + `reduceLedger` output or a projection built by core.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   appendCommand,
+  atomicWrite,
+  withStorageLock,
   buildBudgetReport,
   peekCommands,
   readLedger,
@@ -51,14 +53,21 @@ export async function writeControl(
   projectDir: string,
   patch: Partial<ControlState>,
 ): Promise<ControlState> {
-  const current = await readControlFile(projectDir);
-  const next: ControlState = {
-    paused: patch.paused ?? current.paused,
-    kill: patch.kill ?? current.kill,
-  };
-  await mkdir(join(projectDir, TS_DIR), { recursive: true });
-  await writeFile(join(projectDir, TS_DIR, CONTROL_FILE), JSON.stringify(next), "utf8");
-  return next;
+  if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+    throw new Error("Control patch must be an object");
+  }
+  for (const field of ["paused", "kill"] as const) {
+    if (field in patch && typeof patch[field] !== "boolean") {
+      throw new Error(`Control patch ${field} must be a boolean`);
+    }
+  }
+  const path = join(projectDir, TS_DIR, CONTROL_FILE);
+  return withStorageLock(path, async () => {
+    const current = await readControlFile(projectDir);
+    const next: ControlState = { paused: patch.paused ?? current.paused, kill: patch.kill ?? current.kill };
+    await atomicWrite(path, JSON.stringify(next));
+    return next;
+  });
 }
 
 /**
@@ -80,12 +89,30 @@ export async function loadCommandQueue(projectDir: string): Promise<QueueStatus>
   return peekCommands(projectDir);
 }
 
+/** Only an absent file is an uninitialized control channel. Invalid data must
+ * never turn a partial update into an implicit resume or kill reset. */
 export async function readControlFile(projectDir: string): Promise<ControlState> {
+  let raw: string;
   try {
-    const raw = await readFile(join(projectDir, TS_DIR, CONTROL_FILE), "utf8");
-    const parsed = JSON.parse(raw) as Partial<ControlState>;
-    return { paused: parsed.paused === true, kill: parsed.kill === true };
-  } catch {
-    return { paused: false, kill: false };
+    raw = await readFile(join(projectDir, TS_DIR, CONTROL_FILE), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { paused: false, kill: false };
+    }
+    throw error;
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid control file: malformed JSON");
+  }
+  if (
+    typeof parsed !== "object" || parsed === null || Array.isArray(parsed) ||
+    !("paused" in parsed) || typeof parsed.paused !== "boolean" ||
+    !("kill" in parsed) || typeof parsed.kill !== "boolean"
+  ) {
+    throw new Error("Invalid control file: paused and kill must be booleans");
+  }
+  return { paused: parsed.paused, kill: parsed.kill };
 }

@@ -1,10 +1,10 @@
 /**
- * clockwork CLI — the orchestrator's hands.
+ * clockwork CLI â€” the orchestrator's hands.
  *
  * The PreToolUse guard denies write-tool access to `.teamsmith/**` for
  * everyone (ledger integrity); the orchestrator maintains ledger, specs,
  * guard, and control files exclusively through this CLI. Commands are thin
- * wrappers over @clockwork/core — no business logic lives here.
+ * wrappers over @clockwork/core â€” no business logic lives here.
  */
 
 import { exec } from "node:child_process";
@@ -17,6 +17,13 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 import YAML from "yaml";
 import {
+  atomicWrite,
+  modelIdSchema,
+  validatePlanningInput,
+  withStorageLock,
+  buildAgentDefinition,
+  buildUnitPrompt,
+  buildVerifierPrompt,
   EVENT_TYPES,
   acknowledgeCommands,
   LedgerWriter,
@@ -56,14 +63,13 @@ import {
   writeRetroRecord,
   writeSpecFile,
 } from "@clockwork/core";
-import type { EventType, LedgerEvent, RunState, Spec } from "@clockwork/core";
+import type { EventType, LedgerEvent, RunState, Spec, GoalPlanningInput } from "@clockwork/core";
 import {
-  buildAgentDefinition,
-  buildUnitPrompt,
-  buildVerifierPrompt,
   validConfig,
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
+import { CodexAdapter } from "@clockwork/adapter-codex";
+import { generateGoalPlan, inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
 
 const TS_DIR = ".teamsmith";
 const LEDGER = "ledger.jsonl";
@@ -124,7 +130,7 @@ async function deriveState(cwd: string): Promise<{ state: RunState; events: Ledg
 
 async function latestSpec(cwd: string): Promise<Spec> {
   const loaded = await loadLatestSpec(join(cwd, TS_DIR));
-  if (!loaded) throw new Error("no spec found — run `clockwork spec save` first");
+  if (!loaded) throw new Error("no spec found â€” run `clockwork spec save` first");
   if (!loaded.spec) {
     throw new Error(
       `latest spec is invalid: ${loaded.issues.map((i) => i.message).join("; ")}`,
@@ -154,7 +160,7 @@ async function cmdEvent(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const type = args.positional[0];
   if (!type || !isEventType(type)) {
     return fail(
-      `${type ? `unknown event type: "${type}" — the dictionary is closed.` : "usage: clockwork event <type> [--actor a --unit u --agent g --data '{...}']"}\nvalid types:\n${EVENT_TYPES.map((t) => `  ${t}`).join("\n")}`,
+      `${type ? `unknown event type: "${type}" â€” the dictionary is closed.` : "usage: clockwork event <type> [--actor a --unit u --agent g --data '{...}']"}\nvalid types:\n${EVENT_TYPES.map((t) => `  ${t}`).join("\n")}`,
     );
   }
 
@@ -209,6 +215,10 @@ async function cmdStatus(cwd: string): Promise<CliResult> {
   if (state.anomalies.length) {
     lines.push("", `anomalies (${state.anomalies.length}):`, ...state.anomalies.map((a) => `  - ${a}`));
   }
+  const executions = Object.values(state.executions ?? {});
+  if (executions.length) {
+    lines.push("", `execution tracking: ${executions.filter(e => e.status === "running").length} recorded active | ${executions.filter(e => e.alert).length} warnings | ${executions.filter(e => e.delivery && !e.delivery.acknowledgedAt).length} pending deliveries | ${executions.filter(e => e.executionUnreconciled).length} terminations unconfirmed`);
+  }
   lines.push("", renderBudgetReport(buildBudgetReport(state)));
   return ok(lines.join("\n"));
 }
@@ -216,7 +226,7 @@ async function cmdStatus(cwd: string): Promise<CliResult> {
 async function cmdChangelog(cwd: string): Promise<CliResult> {
   const { events } = await deriveState(cwd);
   if (events.length === 0) {
-    return fail(`no ledger events found under ${join(cwd, TS_DIR, LEDGER)} — wrong directory?`);
+    return fail(`no ledger events found under ${join(cwd, TS_DIR, LEDGER)} â€” wrong directory?`);
   }
   return ok(renderChangelog(events));
 }
@@ -322,7 +332,8 @@ async function cmdGuardSet(cwd: string, args: ParsedArgs): Promise<CliResult> {
 
 async function setControl(cwd: string, control: { paused: boolean; kill: boolean }): Promise<CliResult> {
   await mkdir(join(cwd, TS_DIR), { recursive: true });
-  await writeFile(join(cwd, TS_DIR, "control.json"), JSON.stringify(control), "utf8");
+  const controlPath = join(cwd, TS_DIR, "control.json");
+  await withStorageLock(controlPath, () => atomicWrite(controlPath, JSON.stringify(control)));
   return ok(JSON.stringify(control));
 }
 
@@ -358,7 +369,7 @@ async function cmdRetro(cwd: string, args: ParsedArgs): Promise<CliResult> {
 
   const filePath = await writeRetroRecord(join(cwd, TS_DIR, "retro"), record);
 
-  // Mirror to the user-scope store so experience accumulates ACROSS projects —
+  // Mirror to the user-scope store so experience accumulates ACROSS projects â€”
   // recall in a fresh workspace would otherwise start cold every time.
   try {
     await writeRetroRecord(join(homedir(), ".teamsmith", "retro"), record);
@@ -371,14 +382,15 @@ async function cmdRetro(cwd: string, args: ParsedArgs): Promise<CliResult> {
 async function cmdPrompt(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const [kind, id] = args.positional;
   if (!kind || !id) return fail("usage: clockwork prompt <unit|verify|agentdef> <id>");
+  if (args.flags.adapter !== undefined && !["claude", "codex"].includes(args.flags.adapter)) return fail("unknown adapter (expected claude or codex)");
   const spec = await latestSpec(cwd);
   switch (kind) {
     case "unit":
-      return ok(buildUnitPrompt(spec, id));
+      return ok(buildUnitPrompt(spec, id, args.flags.adapter === "codex" ? "workspace" : "hook"));
     case "verify":
       return ok(buildVerifierPrompt(spec, id));
     case "agentdef":
-      return ok(buildAgentDefinition(spec, id));
+      return ok(buildAgentDefinition(spec, id, args.flags.adapter === "codex" ? "workspace" : "hook"));
     default:
       return fail(`unknown prompt kind: ${kind}`);
   }
@@ -420,7 +432,7 @@ async function cmdRecall(cwd: string, args: ParsedArgs): Promise<CliResult> {
     }
   }
   if (prior.estimation_calibration.length) {
-    lines.push("", "| unit | samples | mean est→actual | deviation |", "|---|---:|---:|---:|");
+    lines.push("", "| unit | samples | mean estâ†’actual | deviation |", "|---|---:|---:|---:|");
     for (const c of prior.estimation_calibration) {
       lines.push(`| ${c.unit} | ${c.samples} | x${c.mean_ratio.toFixed(2)} | ${c.deviation_pct > 0 ? "+" : ""}${c.deviation_pct}% |`);
     }
@@ -429,22 +441,83 @@ async function cmdRecall(cwd: string, args: ParsedArgs): Promise<CliResult> {
     lines.push(`WARNING [${w.reason}] ${w.run_id}: ${w.detail}`);
   }
   for (const e of errors) {
-    lines.push(`(unreadable record: ${e.file} — ${e.message})`);
+    lines.push(`(unreadable record: ${e.file} â€” ${e.message})`);
   }
   return ok(lines.join("\n"));
 }
 
+/** Role-specific defaults; an explicit selection in the approved spec takes priority. */
+function executionModelFlags(args: ParsedArgs) {
+  const names = ["model", "producer-model", "verifier-model", "integration-verifier-model", "planner-model"] as const;
+  const pattern = new RegExp(modelIdSchema.pattern, "u");
+  for (const name of names) {
+    const value = args.flags[name];
+    if (value !== undefined && (value === "true" || Array.from(value).length < modelIdSchema.minLength || Array.from(value).length > modelIdSchema.maxLength || !pattern.test(value)))
+      throw new Error(name + " requires a model ID (1–200 characters, no whitespace/control characters or leading dash)");
+  }
+  return {
+    model: args.flags.model,
+    producerModel: args.flags["producer-model"],
+    verifierModel: args.flags["verifier-model"],
+    integrationVerifierModel: args.flags["integration-verifier-model"],
+  };
+}
+
+/** Make selected host defaults visible in the proposed plan before approval. */
+function planningInput(input: GoalPlanningInput, models: ReturnType<typeof executionModelFlags>): GoalPlanningInput {
+  const producer = input.execution?.producer_model ?? models.producerModel ?? models.model;
+  const verifier = input.execution?.verifier_model ?? models.verifierModel ?? models.model;
+  const final = input.execution?.integration_verifier_model ?? models.integrationVerifierModel ?? verifier;
+  const execution = { ...(producer ? { producer_model: producer } : {}), ...(verifier ? { verifier_model: verifier } : {}), ...(final ? { integration_verifier_model: final } : {}) };
+  return validatePlanningInput({ ...input, ...(Object.keys(execution).length ? { execution } : {}) });
+}
+
+async function cmdPlan(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const models = executionModelFlags(args);
+  if (args.positional.length || !args.flags.goal || args.flags.goal === "true" || args.flags.budget === undefined || args.flags.constraints === "true")
+    return fail('usage: clockwork plan --goal "Your target" --budget 100000 [--constraints "Boundaries" --planner-model ID]');
+  const input = planningInput({ goal: args.flags.goal, ...(args.flags.constraints !== undefined ? { constraints: args.flags.constraints } : {}), budget: parseBudget(args.flags.budget) }, models);
+  const timeoutMs = args.flags["timeout-ms"] === undefined ? 900000 : Number(args.flags["timeout-ms"]);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3600000) return fail("timeout-ms must be between 1000 and 3600000");
+  const windowsSandbox = args.flags["windows-sandbox"];
+  if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt);
+  try {
+    const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
+    const result = await generateGoalPlan({ project: cwd, input, adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs }, signal: controller.signal });
+    return ok(JSON.stringify(result, null, 2));
+  } finally {
+    process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
+  }
+}
+
 async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const models = executionModelFlags(args);
   const port = args.flags.port !== undefined ? Number(args.flags.port) : undefined;
   if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) {
     return fail(`invalid port: ${args.flags.port}`);
   }
-  const handle = await startPanel({ projectDir: cwd, ...(port !== undefined ? { port } : {}) });
+  const enabled = args.flags["enable-execution"];
+  if (enabled !== undefined && enabled !== "true") return fail("enable-execution is a flag");
+  const timeoutMs = args.flags["timeout-ms"] === undefined ? 900000 : Number(args.flags["timeout-ms"]);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3600000) return fail("timeout-ms must be between 1000 and 3600000");
+  const windowsSandbox = args.flags["windows-sandbox"];
+  if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
+  const adapter = enabled ? new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }) : undefined;
+  const execution = adapter ? {
+    plan: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => generateGoalPlan({ ...options, input: planningInput(options.input, models), adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs } }),
+    run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
+    inspect: (project: string) => inspectTeamRecovery(project, models),
+    resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => resumeTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
+  } : undefined;
+  const handle = await startPanel({ projectDir: cwd, ...(port !== undefined ? { port } : {}), execution });
   // The server keeps the event loop alive; Ctrl+C shuts it down cleanly.
-  process.on("SIGINT", () => {
-    void handle.close().then(() => process.exit(0));
-  });
-  return ok(`panel running at ${handle.url} — Ctrl+C to stop`);
+  const stop = () => { void handle.close().then(() => process.exit(0)); };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  return ok(`panel running at ${handle.url} â€” Ctrl+C to stop`);
 }
 
 /** Repo root, resolved from this module's location (dev layout). */
@@ -489,7 +562,7 @@ async function cmdAudit(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const files = await collectScannableFiles(dir);
   const secrets = scanSecrets(files);
 
-  // npm audit exits nonzero when vulnerabilities exist — that is a result,
+  // npm audit exits nonzero when vulnerabilities exist â€” that is a result,
   // not a command failure. Only a spawn failure / empty output is an error.
   let dependencies;
   let depWarning: string | undefined;
@@ -598,7 +671,7 @@ async function cmdLibrary(cwd: string, args: ParsedArgs): Promise<CliResult> {
     case "list": {
       const entries = await listLibrary(dir);
       if (!entries.length) return ok(`(library empty: ${dir})`);
-      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] — ${e.description ?? ""}`).join("\n"));
+      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] â€” ${e.description ?? ""}`).join("\n"));
     }
     case "find": {
       const entries = await findInLibrary(dir, {
@@ -606,7 +679,7 @@ async function cmdLibrary(cwd: string, args: ParsedArgs): Promise<CliResult> {
         ...(args.flags.tags !== undefined ? { tags: args.flags.tags.split(",") } : {}),
       });
       if (!entries.length) return fail("(no matching library entries)");
-      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] — ${e.description ?? ""}\n  ${e.filePath}`).join("\n"));
+      return ok(entries.map((e) => `${e.name} [${e.provenance ?? "?"}] â€” ${e.description ?? ""}\n  ${e.filePath}`).join("\n"));
     }
     case "save": {
       const file = rest[0];
@@ -646,7 +719,7 @@ async function cmdDoctor(cwd: string): Promise<CliResult> {
 
   const state = reduceLedger(events);
   if (state.runId && !state.outcome) {
-    lines.push(`unfinished run detected: ${state.runId} (phase: ${state.phase ?? "?"}) — resume from ledger`);
+    lines.push(`unfinished run detected: ${state.runId} (phase: ${state.phase ?? "?"}) â€” resume from ledger`);
   }
   if (state.anomalies.length) {
     lines.push(`state anomalies: ${state.anomalies.length}`);
@@ -666,11 +739,46 @@ async function cmdDoctor(cwd: string): Promise<CliResult> {
   return healthy ? ok(lines.join("\n")) : fail(lines.join("\n"));
 }
 
+async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const models = executionModelFlags(args);
+  const [mode, unit] = args.positional;
+  if ((mode !== "team" && mode !== "produce" && mode !== "verify") || (mode !== "team" && (!unit || !args.flags.workspace)) || (mode === "team" && (unit || args.flags.workspace))) {
+    return fail("usage: clockwork codex team [--concurrency 2] | <produce|verify> <unit> --workspace <linked-worktree> [--model ID --producer-model ID --verifier-model ID --integration-verifier-model ID --codex-bin /absolute/codex --timeout-ms N --windows-sandbox elevated|unelevated|mxc]");
+  }
+  const concurrency = args.flags.concurrency === undefined ? 2 : Number(args.flags.concurrency);
+  if (mode === "team" && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)) return fail("concurrency must be an integer between 1 and 8");
+  if (mode !== "team" && args.flags.concurrency !== undefined) return fail("concurrency is only supported by codex team");
+  const timeoutMs = args.flags["timeout-ms"] === undefined ? 15 * 60_000 : Number(args.flags["timeout-ms"]);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3_600_000) return fail("timeout-ms must be between 1000 and 3600000");
+  const windowsSandbox = args.flags["windows-sandbox"];
+  if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  try {
+    const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
+    if (mode === "team") {
+      const report = await runTeam({ project: cwd, adapter, concurrency, ...models, watchdog: { hard_ms: timeoutMs }, signal: controller.signal });
+      return { code: report.status === "completed" && Object.keys(report.failures).length === 0 ? 0 : 1, out: JSON.stringify(report, null, 2) };
+    }
+    const report = await runUnit({ project: cwd, workspace: args.flags.workspace!, unit: unit!,
+      mode, ...models, watchdog: { hard_ms: timeoutMs }, signal: controller.signal,
+      adapter,
+    });
+    return { code: report.outcome === "rework" || report.outcome === "blocked" ? 1 : 0, out: JSON.stringify(report, null, 2) };
+  } finally {
+    process.removeListener("SIGINT", interrupt);
+    process.removeListener("SIGTERM", interrupt);
+  }
+}
+
 /* ---------------- dispatch ---------------- */
 
 const USAGE = `clockwork <command>
 
   init                          create .teamsmith/
+  plan --goal TEXT --budget N   propose a goal-driven team; does not execute tasks
   event <type> [flags]          append a ledger event (--actor --unit --agent --data)
   state                         print derived run state (JSON)
   status                        human-readable run summary + budget
@@ -689,7 +797,17 @@ const USAGE = `clockwork <command>
   audit [--dir D --json]        secret scan + npm audit card (reject exits nonzero)
   gp verify <evidence-dir>      mechanical golden-path threshold check (--golden-path gp-N)
   prompt <unit|verify|agentdef> <id>   print a generated prompt
-  doctor                        environment and ledger self-check`;
+  codex team [--concurrency 2]  schedule approved Codex units (1-8 concurrent)
+  codex <produce|verify> <unit> --workspace <path>   run a bounded local Codex worker
+  doctor                        environment and ledger self-check
+
+Model defaults for codex and ui --enable-execution:
+  --planner-model ID            goal planning model (falls back to --model)
+  --model ID                    fallback for both roles
+  --producer-model ID           production default
+  --verifier-model ID           independent review default
+  --integration-verifier-model ID  final combined review (defaults to verifier)
+Approved plan execution settings take priority over these defaults.`;
 
 export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
   const [command, ...rest] = argv;
@@ -728,6 +846,8 @@ export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
         return await setControl(cwd, { paused: false, kill: true });
       case "retro":
         return await cmdRetro(cwd, args);
+      case "plan":
+        return await cmdPlan(cwd, args);
       case "ui":
         return await cmdUi(cwd, args);
       case "recall":
@@ -744,6 +864,8 @@ export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
         return await cmdLibrary(cwd, args);
       case "prompt":
         return await cmdPrompt(cwd, args);
+      case "codex":
+        return await cmdCodex(cwd, args);
       case "doctor":
         return await cmdDoctor(cwd);
       default:

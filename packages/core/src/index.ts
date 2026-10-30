@@ -1,5 +1,5 @@
 export * from "./spec/types.js";
-export { specSchema, amendmentSchema, workUnitSchema, agentSchema } from "./spec/schema.js";
+export { specSchema, amendmentSchema, workUnitSchema, agentSchema, watchdogSchema, executionModelsSchema, modelIdSchema } from "./spec/schema.js";
 export { validateSpec } from "./spec/validate.js";
 export { validateAmendment, applyAmendment } from "./spec/amendment.js";
 export { parseBudget, formatBudget } from "./spec/budget.js";
@@ -25,7 +25,7 @@ export { Redactor, REDACTED } from "./ledger/redact.js";
 export { LedgerWriter, readLedger } from "./ledger/store.js";
 export type { AppendFields, LedgerWriterOptions, ReadLedgerResult } from "./ledger/store.js";
 export { reduceLedger, validateEventTransition } from "./ledger/reduce.js";
-export type { OpenCheckpoint, RunState, UnitState, UnitStatus } from "./ledger/reduce.js";
+export type { ExecutionTracking, OpenCheckpoint, RunState, UnitState, UnitStatus } from "./ledger/reduce.js";
 export { renderChangelog } from "./ledger/changelog.js";
 
 export { buildBudgetReport, renderBudgetReport } from "./budget/report.js";
@@ -82,3 +82,10 @@ export type {
   RetroUnitSignal,
   UserVerdict,
 } from "./retro/record.js";
+
+export { buildUnitPrompt, buildVerifierPrompt, buildAgentDefinition } from "./execution/prompts.js";
+export type * from "./execution/types.js";
+export { withStorageLock, atomicWrite, assertStorageFile } from "./storage/lock.js";
+export * from "./execution/planning.js";
+export { validatePlanningReceipt } from "./execution/planning-receipt.js";
+export type { PlanningReceipt } from "./execution/planning-receipt.js";

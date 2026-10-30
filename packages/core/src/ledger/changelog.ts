@@ -32,6 +32,8 @@ function line(event: LedgerEvent): string | null {
       return `Spec amended v${String(data.from_version ?? "?")} → v${String(data.to_version ?? "?")} (${String(
         data.initiated_by ?? "?",
       )}): ${String(data.reason ?? "")}`;
+    case "unit.retry_requested":
+      return `${unit} retry requested by user.`;
     case "unit.started":
       return `${unit} started${event.agent_id ? ` (agent \`${event.agent_id}\`)` : ""}.`;
     case "unit.verify_started":
@@ -59,7 +61,12 @@ function line(event: LedgerEvent): string | null {
     case "escalation.step":
       return `${unit} escalated to step ${String(data.step ?? "?")}.`;
     // High-frequency bookkeeping events stay out of the human view.
+    case "agent.watchdog":
+    case "agent.delivery_received":
+    case "agent.delivery_acknowledged":
+    case "agent.execution_reconciled":
     case "agent.spawned":
+    case "agent.activity":
     case "agent.completed":
     case "agent.error":
     case "budget.estimated":

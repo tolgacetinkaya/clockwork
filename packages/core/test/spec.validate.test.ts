@@ -14,7 +14,7 @@ function warningCodes(doc: unknown): string[] {
     .map((i) => i.code);
 }
 
-describe("validateSpec — schema", () => {
+describe("validateSpec - schema", () => {
   it("accepts a valid spec with no issues", () => {
     const result = validateSpec(validSpec());
     expect(result.issues).toEqual([]);
@@ -64,7 +64,7 @@ describe("validateSpec — schema", () => {
   });
 });
 
-describe("validateSpec — semantics", () => {
+describe("validateSpec - semantics", () => {
   it("flags duplicate work unit ids", () => {
     const spec = validSpec();
     spec.work_units[1]!.id = "wu-db";
@@ -115,11 +115,11 @@ describe("validateSpec — semantics", () => {
     expect(codes).toContain("assignment-unknown-unit");
   });
 
-  it("warns on overlapping ownership between units", () => {
+  it("permits ordered units to share ownership with an explicit warning", () => {
     const spec = validSpec();
     spec.work_units[2]!.owns = ["src/api/handlers/**"]; // inside wu-api's src/api/**
     expect(warningCodes(spec)).toContain("owns-overlap");
-    // overlap is a warning, not an error: spec is still returned
+    // wu-front depends on wu-api: their writes cannot execute concurrently.
     expect(validateSpec(spec).spec).toBeDefined();
   });
 
@@ -138,5 +138,79 @@ describe("validateSpec — semantics", () => {
   it("does not warn when estimates fit the target", () => {
     const spec = validSpec();
     expect(warningCodes(spec)).not.toContain("budget-overcommit");
+  });
+  it("rejects overlapping ownership of unordered units", () => {
+    const spec = validSpec();
+    spec.work_units[3]!.owns = ["src/api/handlers/**"];
+    expect(errorCodes(spec)).toContain("owns-overlap");
+    expect(validateSpec(spec).spec).toBeUndefined();
+  });
+
+  it("allows transitive dependency ordering to share ownership", () => {
+    const spec = validSpec();
+    spec.work_units[2]!.owns = ["src/db/**"];
+    expect(errorCodes(spec)).not.toContain("owns-overlap");
+    expect(validateSpec(spec).spec).toBeDefined();
+  });
+
+  it("rejects ambiguous wildcard intersections instead of silently skipping them", () => {
+    const spec = validSpec();
+    spec.work_units[0]!.owns = ["src/*/shared?.ts"];
+    spec.work_units[3]!.owns = ["src/api/shared1.ts"];
+    expect(errorCodes(spec)).toContain("owns-overlap");
+  });
+
+  it("accepts wildcard scopes under disjoint literal directories", () => {
+    const spec = validSpec();
+    spec.work_units[0]!.owns = ["src/db/*/shared?.ts"];
+    spec.work_units[3]!.owns = ["src/docs/*/shared?.ts"];
+    expect(errorCodes(spec)).not.toContain("owns-overlap");
+  });
+
+  it.each(["../**", "/src/**", "C:/src/**", "src\\**", "src//**", "src/./**", "src/[ab].ts", "src/{a,b}.ts", "src/**x", "src/.AWS/**", "src/NUL.txt", "src/file:stream"])("rejects unsafe ownership pattern %s", pattern => {
+    const spec = validSpec();
+    spec.work_units[0]!.owns = [pattern];
+    expect(errorCodes(spec)).toContain("invalid-ownership");
+    expect(validateSpec(spec).spec).toBeUndefined();
+  });
+
+  it("compares overlapping path case with host filesystem policy", () => {
+    const spec = validSpec();
+    spec.work_units[3]!.owns = ["SRC/API/**"];
+    expect(errorCodes(spec).includes("owns-overlap")).toBe(process.platform === "win32");
+  });
+
+});
+
+
+describe("explicit test-change exceptions", () => {
+  it("accepts exact test or manifest paths inside the same unit ownership", () => {
+    const spec = validSpec();
+    spec.work_units[0]!.owns = ["src/db/**", "package.json", "vitest.config.ts"];
+    spec.work_units[0]!.allowed_test_changes = ["src/db/test/schema.test.ts", "package.json", "vitest.config.ts"];
+    expect(validateSpec(spec).spec).toBeDefined();
+  });
+  it.each(["../test.ts", "/tests/a.ts", "C:/tests/a.ts", "tests\\a.ts", "tests//a.ts", "tests/./a.ts", "tests/*.ts", "tests/**", "tests/[ab].ts", "tests/{a,b}.ts", "tests/file:stream", "tests/a.ts.", "tests/a.ts ", "tests/NUL.txt", "tests/line\n.ts", ".AWS/config", "tests/.codex/a.ts", ".git/config"])("rejects nonexact or unsafe exception %s", file => {
+    const spec = validSpec();
+    spec.work_units[0]!.owns = ["**"];
+    spec.work_units[0]!.allowed_test_changes = [file];
+    expect(errorCodes(spec)).toContain("invalid-test-exception");
+    expect(validateSpec(spec).spec).toBeUndefined();
+  });
+  it("rejects a test exception owned by another unit", () => {
+    const spec = validSpec();
+    spec.work_units[0]!.allowed_test_changes = ["src/api/test/api.test.ts"];
+    expect(errorCodes(spec)).toContain("test-exception-outside-ownership");
+    expect(validateSpec(spec).spec).toBeUndefined();
+  });
+  it("rejects duplicate exact exceptions via the schema", () => {
+    const spec = validSpec();
+    spec.work_units[0]!.allowed_test_changes = ["src/db/a.test.ts", "src/db/a.test.ts"];
+    expect(errorCodes(spec)).toContain("schema");
+  });
+  it("applies the same Windows case policy to test-exception ownership", () => {
+    const spec = validSpec();
+    spec.work_units[0]!.allowed_test_changes = ["SRC/DB/a.test.ts"];
+    expect(errorCodes(spec).includes("test-exception-outside-ownership")).toBe(process.platform !== "win32");
   });
 });

@@ -12,7 +12,7 @@
 
 import { PHASES, validateEvent } from "./events.js";
 import type { LedgerEvent, Phase } from "./events.js";
-import type { ValidationIssue } from "../spec/types.js";
+import type { ValidationIssue, WatchdogPolicy } from "../spec/types.js";
 
 export type UnitStatus =
   | "pending"
@@ -46,7 +46,34 @@ export interface OpenCheckpoint {
   blocking: boolean;
 }
 
+export interface ExecutionTracking {
+  execution: string;
+  agentId: string;
+  unitId?: string;
+  mode: "produce" | "verify" | "integration_verify";
+  startedAt: string;
+  lastActivityAt: string;
+  lastHeartbeatAt?: string;
+  status: "running" | "completed" | "error";
+  watchdog: WatchdogPolicy;
+  alert?: "idle" | "overdue" | "hard_timeout" | "delivery_timeout";
+  /** Expected-duration warnings remain true even when idle activity recovers. */
+  overdue?: true;
+  /** True when abort/cleanup could not confirm that the underlying execution stopped. */
+  executionUnreconciled?: boolean;
+  delivery?: {
+    id: string;
+    receivedSeq: number;
+    receivedAt: string;
+    acknowledgedAt?: string;
+    /** Received report outcome, then the orchestrator's processing outcome after acknowledgement. */
+    outcome?: string;
+  };
+}
+
 export interface RunState {
+  /** Absent for historical ledgers; introduced only by a tracked spawn. */
+  executions?: Record<string, ExecutionTracking>;
   ledgerSchemaVersion: number | null;
   runId: string | null;
   teamsmithVersion: string | null;
@@ -82,6 +109,7 @@ interface UnitSnapshot {
 }
 
 const LEGAL_SOURCE: Record<string, UnitStatus[]> = {
+  "unit.retry_requested": ["failed", "rework"],
   "unit.started": ["pending", "rework", "blocked"],
   "unit.verify_started": ["running"],
   "unit.rework": ["verifying"],
@@ -91,6 +119,7 @@ const LEGAL_SOURCE: Record<string, UnitStatus[]> = {
 };
 
 const TARGET: Record<string, UnitStatus> = {
+  "unit.retry_requested": "pending",
   "unit.started": "running",
   "unit.verify_started": "verifying",
   "unit.rework": "rework",
@@ -211,6 +240,7 @@ function applyEvent(state: RunState, event: LedgerEvent): void {
       break;
     }
 
+    case "unit.retry_requested":
     case "unit.started":
     case "unit.verify_started":
     case "unit.rework":
@@ -238,13 +268,65 @@ function applyEvent(state: RunState, event: LedgerEvent): void {
       break;
     }
 
-    case "agent.spawned":
+    case "agent.spawned": {
+      if (data.watchdog === undefined) break; // Historical spawns keep their established projection.
+      const execution = String(data.execution);
+      state.executions ??= {};
+      state.executions[execution] = {
+        execution,
+        agentId: event.agent_id!,
+        ...(event.unit_id !== undefined ? { unitId: event.unit_id } : {}),
+        mode: data.mode as ExecutionTracking["mode"],
+        startedAt: event.ts,
+        lastActivityAt: event.ts,
+        status: "running",
+        watchdog: { ...data.watchdog as WatchdogPolicy },
+      };
+      break;
+    }
+    case "agent.activity": {
+      const execution = state.executions?.[String(data.execution)];
+      if (!execution) break;
+      if (data.kind === "process_heartbeat") execution.lastHeartbeatAt = event.ts;
+      else execution.lastActivityAt = event.ts;
+      break;
+    }
     case "agent.completed":
-      break; // presence in the ledger is the record; no state to carry (yet)
     case "agent.error": {
-      if (event.unit_id && !state.units[event.unit_id]) {
-        state.anomalies.push(`seq ${event.seq}: agent.error for unknown unit "${event.unit_id}"`);
+      const execution = state.executions?.[String(data.execution)];
+      if (!execution) break;
+      execution.status = event.type === "agent.completed" ? "completed" : "error";
+      if (event.type === "agent.error" && typeof data.execution_unreconciled === "boolean") {
+        execution.executionUnreconciled = data.execution_unreconciled;
       }
+      break;
+    }
+    case "agent.watchdog": {
+      const execution = state.executions![String(data.execution)]!;
+      if (data.kind === "overdue") execution.overdue = true;
+      if (data.kind === "recovered") {
+        if (execution.overdue) execution.alert = "overdue";
+        else delete execution.alert;
+      } else execution.alert = data.kind as ExecutionTracking["alert"];
+      break;
+    }
+    case "agent.delivery_received": {
+      const execution = state.executions![String(data.execution)]!;
+      execution.delivery = {
+        id: String(data.delivery_id), receivedSeq: event.seq, receivedAt: event.ts,
+        outcome: String(data.outcome),
+      };
+      execution.lastActivityAt = event.ts;
+      break;
+    }
+    case "agent.execution_reconciled": {
+      state.executions![String(data.execution)]!.executionUnreconciled = false;
+      break;
+    }
+    case "agent.delivery_acknowledged": {
+      const delivery = state.executions![String(data.execution)]!.delivery!;
+      delivery.acknowledgedAt = event.ts;
+      delivery.outcome = String(data.outcome);
       break;
     }
 
@@ -410,6 +492,10 @@ export function validateEventTransition(state: RunState, event: LedgerEvent): Va
   if (event.type === "run.resumed" && !state.paused) fail("Run is not paused");
   if (event.type === "run.completed" && d.outcome === "done") {
     if (!state.specApproved) fail("Completion requires an approved spec");
+    if (Object.values(state.executions ?? {}).some(execution => execution.status === "running" ||
+      execution.executionUnreconciled === true || (execution.delivery && execution.delivery.acknowledgedAt === undefined))) {
+      fail("Completion has running, unreconciled, or unacknowledged executions");
+    }
     if (state.paused) fail("Completion requires an active run");
     if (Object.values(state.units).some((u) => u.status !== "accepted" && u.status !== "cancelled")) fail("Completion requires all units accepted or cancelled");
     if (state.openCheckpoints.some((c) => c.blocking)) fail("Completion has blocking checkpoints");
@@ -447,6 +533,35 @@ export function validateEventTransition(state: RunState, event: LedgerEvent): Va
         if (state.openCheckpoints.some((c) => c.blocking)) fail("Unit start has blocking checkpoints");
         if (unit.dependsOn.some((dep) => state.units[dep]?.status !== "accepted")) fail(`unit.started on "${event.unit_id}" before dependencies accepted`);
       }
+    }
+  }
+  const tracking = typeof d.execution === "string" ? state.executions?.[d.execution] : undefined;
+  const trackingEvent = ["agent.watchdog", "agent.delivery_received", "agent.delivery_acknowledged", "agent.execution_reconciled"].includes(event.type);
+  if (event.type === "agent.spawned" && tracking) fail("Execution already spawned");
+  if (trackingEvent && !tracking) fail("Event requires a spawned tracked execution");
+  if (state.executions && ["agent.activity", "agent.completed", "agent.error"].includes(event.type) && !tracking &&
+    (d.execution !== undefined || Object.values(state.executions).some(e => e.agentId === event.agent_id))) {
+    fail("Event requires its spawned execution");
+  }
+  // Older spawns did not opt in to tracking. Their activity/terminal events retain their semantics.
+  if (tracking && event.type.startsWith("agent.") && event.type !== "agent.spawned") {
+    if (tracking.agentId !== event.agent_id || tracking.unitId !== event.unit_id) fail("Execution agent/unit does not match its spawn");
+    if (d.mode !== undefined && d.mode !== tracking.mode) fail("Execution mode does not match its spawn");
+    if (["agent.activity", "agent.completed", "agent.error", "agent.delivery_received"].includes(event.type) && tracking.status !== "running") fail("Execution is already terminal");
+    if (event.type === "agent.delivery_received" && tracking.delivery) fail("Execution already received a delivery");
+    if (event.type === "agent.execution_reconciled" && (tracking.status !== "error" || tracking.executionUnreconciled !== true)) {
+      fail("Reconciliation requires a terminal error with an unreconciled execution");
+    }
+    if (event.type === "agent.delivery_acknowledged") {
+      if (tracking.status === "running") fail("Acknowledgement requires a terminal execution");
+      const delivery = tracking.delivery;
+      if (!delivery || delivery.id !== d.delivery_id || delivery.receivedSeq !== d.received_seq) fail("Acknowledgement must match delivery id and received sequence");
+      else if (delivery.acknowledgedAt !== undefined) fail("Delivery already acknowledged");
+    }
+    if (event.type === "agent.watchdog") {
+      if (d.kind === "delivery_timeout") {
+        if (!tracking.delivery || tracking.delivery.acknowledgedAt !== undefined) fail("Delivery timeout requires a pending delivery");
+      } else if (tracking.status !== "running") fail("Execution is already terminal");
     }
   }
   if (event.type === "interaction.checkpoint_raised" && state.openCheckpoints.some((c) => c.ref === d.ref)) fail(`Duplicate checkpoint "${String(d.ref)}"`);

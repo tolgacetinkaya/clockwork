@@ -14,6 +14,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isCommandType, validateCommand } from "./types.js";
 import type { Command, CommandType } from "./types.js";
+import { Redactor } from "../ledger/redact.js";
 import type { ValidationIssue } from "../spec/types.js";
 
 import { assertStorageFile, atomicWrite, withStorageLock } from "../storage/lock.js";
@@ -103,9 +104,11 @@ export async function readCommands(projectDir: string): Promise<ReadCommandsResu
 export interface AppendCommandOptions {
   /** Injectable clock for deterministic tests. */
   clock?: () => Date;
+  /** Additional known secrets to reject alongside built-in credential formats. */
+  redactor?: Redactor;
 }
 
-/** Appends one command, rejecting unknown types and malformed data. */
+/** Appends one command, rejecting malformed data and detected secrets without altering command meaning. */
 export async function appendCommand(
   projectDir: string,
   type: string,
@@ -113,7 +116,7 @@ export async function appendCommand(
   options: AppendCommandOptions = {},
 ): Promise<Command> {
   if (!isCommandType(type)) {
-    throw new Error(`Refusing to append unknown command type: "${type}"`);
+    throw new Error("Refusing to append unknown command type");
   }
   const filePath = commandsFilePath(projectDir);
   return withStorageLock(filePath, async () => {
@@ -129,13 +132,27 @@ export async function appendCommand(
       type,
       data,
     };
-    const { issues: cmdIssues } = validateCommand(command);
+    // Inspect the exact JSON snapshot that will be persisted (including keys and
+    // toJSON output). Reject rather than substitute meaningful answers or refs.
+    let serialized: string;
+    let snapshot: Command;
+    try {
+      serialized = JSON.stringify(command);
+      snapshot = JSON.parse(serialized) as Command;
+    } catch {
+      throw new Error("Refusing to append non-serializable command");
+    }
+    const redactor = options.redactor ?? new Redactor();
+    if (JSON.stringify(redactor.redactValue(snapshot)) !== serialized) {
+      throw new Error("Refusing to append command containing detected secrets");
+    }
+    const { issues: cmdIssues } = validateCommand(snapshot);
     if (cmdIssues.length) {
       throw new Error(`Refusing to append invalid command: ${cmdIssues[0]!.message}`);
     }
     await mkdir(dirname(filePath), { recursive: true });
-    await appendFile(filePath, `${JSON.stringify(command)}\n`, "utf8");
-    return command;
+    await appendFile(filePath, `${serialized}\n`, "utf8");
+    return snapshot;
   });
 }
 
