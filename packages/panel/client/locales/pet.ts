@@ -249,3 +249,16 @@ for (const locale of Object.keys(animalMessages) as (keyof typeof animalMessages
     petMessages[locale][key] = animalMessages[locale][index]!;
   });
 }
+
+const placementMessages = {
+  tr: ["Yoldaşı taşı", "Taşımak için sürükleyin; ok tuşları 16 piksel taşır.", "Yoldaşı sabitle", "Yoldaşı serbest bırak", "Yoldaş konumunu sıfırla"],
+  es: ["Mover compañero", "Arrastra para mover; las flechas desplazan 16 píxeles.", "Acoplar compañero", "Desacoplar compañero", "Restablecer posición del compañero"],
+  de: ["Begleiter verschieben", "Zum Verschieben ziehen; Pfeiltasten bewegen um 16 Pixel.", "Begleiter andocken", "Begleiter lösen", "Begleiterposition zurücksetzen"],
+  fr: ["Déplacer le compagnon", "Faites glisser pour déplacer ; les flèches déplacent de 16 pixels.", "Ancrer le compagnon", "Détacher le compagnon", "Réinitialiser la position du compagnon"],
+  pt: ["Mover companheiro", "Arraste para mover; as setas movem 16 pixels.", "Ancorar companheiro", "Desancorar companheiro", "Redefinir posição do companheiro"],
+};
+for (const locale of Object.keys(placementMessages) as (keyof typeof placementMessages)[]) {
+  ["Move companion", "Drag to move; arrow keys move by 16 pixels.", "Dock companion", "Float companion", "Reset companion position"].forEach((key, index) => {
+    petMessages[locale][key] = placementMessages[locale][index]!;
+  });
+}

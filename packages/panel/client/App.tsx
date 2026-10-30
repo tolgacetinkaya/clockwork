@@ -15,7 +15,7 @@ import { useLivePanel, useSnapshot, postJSON } from "./live.js";
 import { usePanelUI } from "./state.js";
 import { Mark, Dialog } from "./ui.js";
 import { Layout } from "./layout.js";
-import { Companion } from "./companion.js";
+import { FloatingCompanion } from "./floating-companion.js";
 import { Overview } from "./overview.js";
 import { Workboard } from "./work.js";
 import { Mission } from "./mission.js";
@@ -138,7 +138,7 @@ export function App() {
             )}
           </>
         )}
-        {view !== "overview" || !snapshot ? <div className="secondary-companion"><Companion snapshot={snapshot} /></div> : null}
+        <FloatingCompanion snapshot={snapshot} />
       </Layout>
 
       {notice ? (

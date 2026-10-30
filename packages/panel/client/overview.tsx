@@ -9,7 +9,6 @@ import { eventTitle, time, unitTitle } from "./format.js";
 import { Status } from "./ui.js";
 import { activeTeam, unitActivity } from "./team-summary.js";
 import { crewRole, crewRunFlag } from "./crew.js";
-import { Companion } from "./companion.js";
 import { concise, crewPortrait, questDeliveries, questTitle, questUnits } from "./quest-model.js";
 import "./quest.css";
 
@@ -54,7 +53,6 @@ export function Overview({ snapshot }: { snapshot: PanelSnapshot }) {
       <motion.section key={selectedId ?? "empty"} initial={motionEnabled ? { opacity: .5, x: 8 } : false} animate={{ opacity: 1, x: 0 }} transition={{ duration: motionEnabled ? .2 : 0 }} className="quest-inspector" aria-label={t("Task inspector")}>
         {unit && selectedId ? <><header><span className="quest-inspector-icon"><Search size={34}/></span><div><h2>{unitTitle(snapshot, selectedId)}</h2><p>{t("Task {number}", { number: units.findIndex(([id]) => id === selectedId) + 1 })}</p><Status value={unit.status}/></div></header><div className="quest-inspector-body"><p className="quest-description">{definition?.description ? concise(definition.description, 160) : t("No specification recorded")}</p><section><h3>{t("Acceptance criteria")}</h3>{definition?.acceptance.length ? <ul className="quest-criteria">{definition.acceptance.slice(0, 3).map((criterion, index) => <li key={index}><Circle size={17}/><span>{concise(criterion, 100)}</span></li>)}</ul> : <p>{t("No acceptance criteria recorded")}</p>}</section><section><h3><GitBranch size={16}/>{t("Dependencies")}</h3>{unit.dependsOn.length ? unit.dependsOn.map(id => <button className="quest-dependency" key={id} onClick={() => setSelected(id)}><ArrowUpRight size={21}/><span><strong>{unitTitle(snapshot, id)}</strong><small>{snapshot.state.units[id] ? t(snapshot.state.units[id]!.status.charAt(0).toUpperCase() + snapshot.state.units[id]!.status.slice(1)) : t("Not recorded")}</small></span></button>) : <p>{t("No dependencies")}</p>}</section>{definition?.owns.length ? <section><h3><FileText size={16}/>{t("Owned scope")}</h3><div className="quest-owned">{definition.owns.map(path => <code key={path}>{path}</code>)}</div></section> : null}</div><button className="quest-inspect-button" onClick={() => selectUnit(selectedId)}>{t("Inspect evidence")}<ArrowUpRight size={18}/></button></> : <div className="quest-inspector-empty"><Search size={30}/><h2>{t("Task inspector")}</h2><p>{t("Choose a task to inspect its recorded evidence.")}</p></div>}
       </motion.section>
-      <Companion snapshot={snapshot}/>
     </aside>
   </div>;
 }

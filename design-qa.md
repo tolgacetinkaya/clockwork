@@ -64,3 +64,12 @@ React review: stable identity keys, shared visibility subscription with cleanup,
 Validation: both server and client type checks, all 134 panel tests across 20 files, public-file checks and Docker production build passed. Browser verified moving transform values over time, three particles after click/Enter, task inspector selection, no activity ring in recorded demo, 1440px and 390px layouts, and no console errors/warnings. Initial JS bundle increased from approximately 138KB to 185KB gzip; Vite reports its default uncompressed 500KB chunk-size advisory. No network animation assets or extra backend subscriptions are needed. License notices ship with panel assets.
 
 Motion follow-up result: passed. Evidence: `arcade-motion.png` in the local QA artifact folder. Browser verification used the recorded demo; actual live state behavior is validated by existing companion-state and motion policy tests.
+
+
+## Floating companion follow-up
+
+The companion is now mounted once at the application boundary and portaled to a fixed browser-viewport layer. Its handle supports pointer capture for drag and arrow-key movement (16px; Shift64px), with reset and dock/float controls. Local placement preferences use a separate validated versioned key; existing creature and announcement preferences remain compatible. Position is committed at drag end or keyboard movement, not on every pointer event. Motion values update transforms without per-frame React renders. Window and element resize clamp the pet inside the viewport, including expanded settings; the scrollable panel retains a sticky toolbar. Dialogs remain above the companion.
+
+Validation: server/client type checks and all139 panel tests across21 files passed. New boundary tests cover damaged storage, non-finite coordinates, negative positions, resize and undersized viewports. Browser verified actual pointer drag from(992,368) to(362,215), one ArrowLeft step to(346,215), reload persistence, navigation persistence with one companion instance, dock/float toggles, and390x600 viewport clamping with expanded settings. Fresh Docker tab: one floating companion, working keyboard movement, no console warnings/errors. Production build and public-file checks passed. Evidence: `arcade-floating-pet.png` in the local QA artifact folder.
+
+Floating follow-up result: passed. Movement is within the browser viewport; cross-application desktop overlay requires a separate desktop host.
