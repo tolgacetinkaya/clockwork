@@ -18,6 +18,7 @@ const execAsync = promisify(exec);
 import YAML from "yaml";
 import {
   atomicWrite,
+  modelIdSchema,
   withStorageLock,
   buildAgentDefinition,
   buildUnitPrompt,
@@ -212,6 +213,10 @@ async function cmdStatus(cwd: string): Promise<CliResult> {
   }
   if (state.anomalies.length) {
     lines.push("", `anomalies (${state.anomalies.length}):`, ...state.anomalies.map((a) => `  - ${a}`));
+  }
+  const executions = Object.values(state.executions ?? {});
+  if (executions.length) {
+    lines.push("", `execution tracking: ${executions.filter(e => e.status === "running").length} recorded active | ${executions.filter(e => e.alert).length} warnings | ${executions.filter(e => e.delivery && !e.delivery.acknowledgedAt).length} pending deliveries | ${executions.filter(e => e.executionUnreconciled).length} terminations unconfirmed`);
   }
   lines.push("", renderBudgetReport(buildBudgetReport(state)));
   return ok(lines.join("\n"));
@@ -440,7 +445,25 @@ async function cmdRecall(cwd: string, args: ParsedArgs): Promise<CliResult> {
   return ok(lines.join("\n"));
 }
 
+/** Role-specific defaults; an explicit selection in the approved spec takes priority. */
+function executionModelFlags(args: ParsedArgs) {
+  const names = ["model", "producer-model", "verifier-model", "integration-verifier-model"] as const;
+  const pattern = new RegExp(modelIdSchema.pattern, "u");
+  for (const name of names) {
+    const value = args.flags[name];
+    if (value !== undefined && (value === "true" || Array.from(value).length < modelIdSchema.minLength || Array.from(value).length > modelIdSchema.maxLength || !pattern.test(value)))
+      throw new Error(name + " requires a model ID (1–200 characters, no whitespace/control characters or leading dash)");
+  }
+  return {
+    model: args.flags.model,
+    producerModel: args.flags["producer-model"],
+    verifierModel: args.flags["verifier-model"],
+    integrationVerifierModel: args.flags["integration-verifier-model"],
+  };
+}
+
 async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const models = executionModelFlags(args);
   const port = args.flags.port !== undefined ? Number(args.flags.port) : undefined;
   if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) {
     return fail(`invalid port: ${args.flags.port}`);
@@ -453,9 +476,9 @@ async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
   if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
   const adapter = enabled ? new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }) : undefined;
   const execution = adapter ? {
-    run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, model: args.flags.model }),
-    inspect: inspectTeamRecovery,
-    resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => resumeTeam({ ...options, adapter, model: args.flags.model }),
+    run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
+    inspect: (project: string) => inspectTeamRecovery(project, models),
+    resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => resumeTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
   } : undefined;
   const handle = await startPanel({ projectDir: cwd, ...(port !== undefined ? { port } : {}), execution });
   // The server keeps the event loop alive; Ctrl+C shuts it down cleanly.
@@ -685,9 +708,10 @@ async function cmdDoctor(cwd: string): Promise<CliResult> {
 }
 
 async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
+  const models = executionModelFlags(args);
   const [mode, unit] = args.positional;
   if ((mode !== "team" && mode !== "produce" && mode !== "verify") || (mode !== "team" && (!unit || !args.flags.workspace)) || (mode === "team" && (unit || args.flags.workspace))) {
-    return fail("usage: clockwork codex team [--concurrency 2] | <produce|verify> <unit> --workspace <linked-worktree> [--model ID --codex-bin /absolute/codex --timeout-ms N --windows-sandbox elevated|unelevated|mxc]");
+    return fail("usage: clockwork codex team [--concurrency 2] | <produce|verify> <unit> --workspace <linked-worktree> [--model ID --producer-model ID --verifier-model ID --integration-verifier-model ID --codex-bin /absolute/codex --timeout-ms N --windows-sandbox elevated|unelevated|mxc]");
   }
   const concurrency = args.flags.concurrency === undefined ? 2 : Number(args.flags.concurrency);
   if (mode === "team" && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)) return fail("concurrency must be an integer between 1 and 8");
@@ -703,11 +727,11 @@ async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
   try {
     const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
     if (mode === "team") {
-      const report = await runTeam({ project: cwd, adapter, concurrency, model: args.flags.model, signal: controller.signal });
+      const report = await runTeam({ project: cwd, adapter, concurrency, ...models, watchdog: { hard_ms: timeoutMs }, signal: controller.signal });
       return { code: report.status === "completed" && Object.keys(report.failures).length === 0 ? 0 : 1, out: JSON.stringify(report, null, 2) };
     }
     const report = await runUnit({ project: cwd, workspace: args.flags.workspace!, unit: unit!,
-      mode, model: args.flags.model, signal: controller.signal,
+      mode, ...models, watchdog: { hard_ms: timeoutMs }, signal: controller.signal,
       adapter,
     });
     return { code: report.outcome === "rework" || report.outcome === "blocked" ? 1 : 0, out: JSON.stringify(report, null, 2) };
@@ -742,7 +766,14 @@ const USAGE = `clockwork <command>
   prompt <unit|verify|agentdef> <id>   print a generated prompt
   codex team [--concurrency 2]  schedule approved Codex units (1-8 concurrent)
   codex <produce|verify> <unit> --workspace <path>   run a bounded local Codex worker
-  doctor                        environment and ledger self-check`;
+  doctor                        environment and ledger self-check
+
+Model defaults for codex and ui --enable-execution:
+  --model ID                    fallback for both roles
+  --producer-model ID           production default
+  --verifier-model ID           independent review default
+  --integration-verifier-model ID  final combined review (defaults to verifier)
+Approved plan execution settings take priority over these defaults.`;
 
 export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
   const [command, ...rest] = argv;

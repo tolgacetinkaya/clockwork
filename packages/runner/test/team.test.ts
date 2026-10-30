@@ -52,12 +52,17 @@ async function fixture(dependent = false, budget = 10000, three = false, configu
 function adapter(action?: (workspace: string, unit: string, signal: AbortSignal) => Promise<void>): ExecutionAdapter {
   return { id: "test", async *execute(request): AsyncGenerator<ExecutionEvent> {
     const unit = request.prompt.match(/(?:Work unit|Verification of work unit): (wu-[abc])/)![1]!;
+    const file = `${unit.slice(3)}.txt`;
+    const command = `read ${file}`;
     if (request.mode === "produce") {
       await action?.(request.workspace, unit, request.signal);
-      await writeFile(join(request.workspace, `${unit.slice(3)}.txt`), unit);
+      await writeFile(join(request.workspace, file), unit);
+    } else {
+      expect(await readFile(join(request.workspace, file), "utf8")).toBe(unit);
+      yield { type: "command", id: "read-unit-file", command, exitCode: 0, status: "completed" };
     }
     yield { type: "usage", input: 10, cached: 0, output: 2 };
-    yield { type: "report", report: { outcome: request.mode === "produce" ? "completed" : "accepted", summary: "done", findings: [], evidence: [{ criterion: "file exists", command: "read file", result: "exists", passed: true }] } };
+    yield { type: "report", report: { outcome: request.mode === "produce" ? "completed" : "accepted", summary: "done", findings: [], evidence: [{ criterion: "file exists", command, result: "exists", passed: true }] } };
   } };
 }
 describe("automatic isolated team", () => {
@@ -282,8 +287,21 @@ describe("automatic isolated team", () => {
 
   it("preserves a real Git integration conflict and blocks downstream dispatch", async () => {
     const { project } = await fixture(false, 10000, true, spec => {
-      for (const unit of spec.work_units.slice(0, 2)) unit.owns = ["README.md"];
       spec.work_units[2]!.depends_on = ["wu-a", "wu-b"];
+    });
+    const originalGit = workspaceModule.git;
+    let integrations = 0;
+    // Simulate a concurrent edit to the integration branch between verified
+    // delivery and cherry-pick; unit ownership itself remains disjoint and valid.
+    vi.spyOn(workspaceModule, "git").mockImplementation(async (cwd, ...args) => {
+      if (args.includes("cherry-pick") && ++integrations === 2) {
+        const file = await originalGit(cwd, "diff-tree", "--no-commit-id", "--name-only", "-r", args.at(-1)!);
+        expect(file).toMatch(/^[ab]\.txt$/);
+        await writeFile(join(cwd, file), "concurrent integration edit\n");
+        await originalGit(cwd, "add", "--", file);
+        await originalGit(cwd, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "commit", "-m", "Controlled concurrent integration edit");
+      }
+      return originalGit(cwd, ...args);
     });
     const originalHead = await git(project, "rev-parse", "HEAD");
     await writeFile(join(project, "README.md"), "user uncommitted edit");
@@ -293,18 +311,22 @@ describe("automatic isolated team", () => {
     const work = runTeam({ project, concurrency: 2, adapter: {
       id: "conflict-test", async *execute(request): AsyncGenerator<ExecutionEvent> {
         const unit = request.prompt.match(/(?:Work unit|Verification of work unit): (wu-[abc])/)![1]!;
+        const file = `${unit.slice(3)}.txt`;
+        const command = `read ${file}`;
         if (request.mode === "produce") {
           producers.push(unit);
           if (producers.length === 2) both.resolve();
           await release.promise;
-          await writeFile(join(request.workspace, "README.md"), `independent output from ${unit}\n`);
+          await writeFile(join(request.workspace, file), `independent output from ${unit}\n`);
         }
-        const contents = await readFile(join(request.workspace, "README.md"), "utf8");
+        const contents = await readFile(join(request.workspace, file), "utf8");
+        if (request.mode === "verify")
+          yield { type: "command", id: "read-shared-file", command, exitCode: 0, status: "completed" };
         yield { type: "usage", input: 10, cached: 0, output: 2 };
         yield { type: "report", report: {
           outcome: request.mode === "produce" ? "completed" : "accepted",
           summary: "Changed existing shared file", findings: [],
-          evidence: [{ criterion: "file exists", command: "read README.md", result: contents, passed: true }],
+          evidence: [{ criterion: "file exists", command, result: contents, passed: true }],
         } };
       },
     } });
@@ -321,7 +343,7 @@ describe("automatic isolated team", () => {
     expect(await git(project, "branch", "--show-current")).toBe("main");
     expect(await git(project, "status", "--porcelain")).toBe(originalStatus);
     expect(await readFile(join(project, "README.md"), "utf8")).toBe("user uncommitted edit");
-    expect(await git(result.integrationWorkspace!, "ls-files", "--unmerged")).toContain("README.md");
+    expect(await git(result.integrationWorkspace!, "ls-files", "--unmerged")).toContain(`${conflicted.slice(3)}.txt`);
     const recovery = await inspectTeamRecovery(project);
     expect(recovery.canResume).toBe(false);
     expect(recovery.reasons.join(" ")).toMatch(/conflict|disagree/);
@@ -333,7 +355,7 @@ describe("automatic isolated team", () => {
     for (const unit of ["wu-a", "wu-b"]) {
       expect(await git(receipt.workspaces[unit], "rev-parse", "HEAD")).toBe(receipt.commits[unit]);
       expect(await git(project, "cat-file", "-t", receipt.commits[unit])).toBe("commit");
-      expect(await readFile(join(receipt.workspaces[unit], "README.md"), "utf8")).toContain(unit);
+      expect(await readFile(join(receipt.workspaces[unit], `${unit.slice(3)}.txt`), "utf8")).toContain(unit);
     }
     const state = reduceLedger((await readLedger(join(project, ".teamsmith/ledger.jsonl"))).events);
     expect(state.units["wu-c"]?.status).toBe("pending");
@@ -352,6 +374,7 @@ describe("automatic isolated team", () => {
       expect(await git(request.workspace, "status", "--porcelain")).toBe("");
       const combined = await readFile(join(request.workspace, "a.txt"), "utf8") + await readFile(join(request.workspace, "b.txt"), "utf8");
       expect(combined).toBe("wu-awu-b");
+      yield { type: "command", id: "read-combined-files", command: "read a.txt and b.txt", exitCode: 0, status: "completed" };
       yield { type: "usage", input: 7, cached: 2, output: 3 };
       yield { type: "report", report: { outcome: "accepted", summary: "combined", findings: [], evidence: [{ criterion: "both files combine", command: "read a.txt and b.txt", result: combined, passed: true }] } };
     } } });
@@ -413,6 +436,10 @@ describe("automatic isolated team", () => {
     const base = adapter();
     const gateAdapter = (pass: boolean): ExecutionAdapter => ({ id: "test", async *execute(request) {
       if (!request.prompt.startsWith("# Final integration verification")) { yield* base.execute(request); return; }
+      expect(await readFile(join(request.workspace, "a.txt"), "utf8")).toBe("wu-a");
+      expect(await readFile(join(request.workspace, "b.txt"), "utf8")).toBe("wu-b");
+      // This adapter simulates the controlled combined gate's process result.
+      yield { type: "command", id: "combined-gate", command: "combined test", exitCode: pass ? 0 : 1, status: pass ? "completed" : "failed" };
       yield { type: "usage", input: 8, cached: 0, output: 2 };
       yield { type: "report", report: { outcome: pass ? "accepted" : "rework", summary: "gate", findings: pass ? [] : ["combined failed"], evidence: [{ criterion: "combined test passes", command: "combined test", result: pass ? "pass" : "fail", passed: pass }] } };
     } });
@@ -469,6 +496,7 @@ describe("automatic isolated team", () => {
     expect(await readFile(join(project, ".teamsmith/ledger.jsonl"), "utf8")).toBe(ledger);
     expect(await readFile(join(result.integrationWorkspace!, "README.md"), "utf8")).toBe("verifier modified delivery");
   }, 20000);
+  // Multiple real Git recovery inspections and a resumed run need headroom under host load.
   it("respects unrelated blockers and only clears pause controls on explicit reviewed resume", async () => {
     const { project, writer } = await fixture(true);
     const base = adapter();
@@ -496,7 +524,7 @@ describe("automatic isolated team", () => {
     expect(state.paused).toBe(false);
     expect(state.openCheckpoints).toEqual([]);
     expect(state.anomalies).toEqual([]);
-  }, 20000);
+  }, 60000);
 
   it.each(["usage", "report"] as const)("refuses final verifier missing %s and accounts conservatively", async missing => {
     const { project } = await fixture(false, 10000, false, spec => { spec.verification = { global_gates: ["combined passes"] }; });

@@ -22,6 +22,17 @@ export interface Priorities {
   bias: Bias;
 }
 
+/** Resolved watchdog deadlines, in milliseconds. */
+export interface WatchdogPolicy {
+  idle_ms: number;
+  expected_ms?: number;
+  hard_ms: number;
+  delivery_ms: number;
+}
+
+/** Spec overrides; the runner resolves omitted values before spawning. */
+export type WatchdogOptions = Partial<WatchdogPolicy>;
+
 export interface WorkUnit {
   id: string;
   type: UnitType;
@@ -34,6 +45,9 @@ export interface WorkUnit {
   /** Acceptance criteria the verifier will use. */
   acceptance: string[];
   budget_est?: BudgetValue;
+  watchdog?: WatchdogOptions;
+  /** Exact test/config paths explicitly approved for edits or new validation configuration. */
+  allowed_test_changes?: string[];
 }
 
 export interface AgentDef {
@@ -59,14 +73,24 @@ export interface Milestone {
 }
 
 export interface Verification {
+  watchdog?: WatchdogOptions;
   per_unit?: Record<string, unknown>;
   global_gates?: string[];
+}
+
+/** Optional provider model IDs. Role defaults are resolved by the runtime. */
+export interface ExecutionModels {
+  producer_model?: string;
+  verifier_model?: string;
+  /** Omitted integration selection inherits the resolved verifier model. */
+  integration_verifier_model?: string;
 }
 
 export interface Spec {
   spec_version: number;
   meta: SpecMeta;
   priorities: Priorities;
+  execution?: ExecutionModels;
   decision_gates?: string[];
   work_units: WorkUnit[];
   agents: AgentDef[];

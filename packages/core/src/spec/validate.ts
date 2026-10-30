@@ -1,4 +1,5 @@
 import { Ajv } from "ajv";
+import { posix } from "node:path";
 import { specSchema } from "./schema.js";
 import { parseBudget } from "./budget.js";
 import type { Spec, ValidationIssue, ValidationResult, WorkUnit } from "./types.js";
@@ -27,6 +28,8 @@ export function validateSpec(doc: unknown): ValidationResult {
 
   const spec = doc as Spec;
   issues.push(...semanticIssues(spec));
+  const policies = [...spec.work_units.map(unit => ({ path: `work_units.${unit.id}.watchdog`, value: unit.watchdog })), { path: "verification.watchdog", value: spec.verification?.watchdog }];
+  for (const { path, value } of policies) if (value?.expected_ms !== undefined && value.hard_ms !== undefined && value.expected_ms >= value.hard_ms) issues.push({ level: "error", code: "watchdog-deadline", path, message: "Watchdog expected_ms must be less than hard_ms" });
 
   const hasError = issues.some((i) => i.level === "error");
   return hasError ? { issues } : { spec, issues };
@@ -124,8 +127,9 @@ function semanticIssues(spec: Spec): ValidationIssue[] {
     }
   }
 
-  // owns overlap (warning — surfaced by the critic during NEGOTIATE)
+  // Ownership must be safe for every pair of potentially concurrent units.
   issues.push(...ownsOverlapIssues(spec.work_units));
+  issues.push(...testExceptionIssues(spec.work_units));
 
   // Budget: does the sum of unit estimates exceed the target (warning)
   issues.push(...budgetIssues(spec));
@@ -166,35 +170,65 @@ function findCycle(units: WorkUnit[]): string[] | null {
   return null;
 }
 
-/**
- * Only literal directory prefixes are compared ("src/auth/**" → "src/auth").
- * Patterns with interior wildcards are skipped — staying silent beats false alarms.
+const ownershipControls = new Set([".git", ".teamsmith", ".codex", ".claude", ".agents", ".aws", ".ssh"]);
+function validOwnershipPattern(pattern: string): boolean {
+  // Keep the runtime ownership matcher in sync with this deliberately small grammar.
+  return Boolean(pattern) && !/[\\:\x00-\x1f\x7f\[\]{}()!+@]/.test(pattern) &&
+    pattern.split("/").every(part => part !== "" && part !== "." && part !== ".." &&
+      !/[. ]$/.test(part) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part) &&
+      !ownershipControls.has(part.toLowerCase()) && (!part.includes("**") || part === "**"));
+}
+function testExceptionIssues(units: WorkUnit[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const fold = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
+  for (const unit of units) {
+    for (const file of unit.allowed_test_changes ?? []) {
+      if (!validOwnershipPattern(file) || /[*?]/.test(file)) {
+        issues.push({ level: "error", code: "invalid-test-exception", message: `Unit "${unit.id}" test-change exception must name an exact canonical repository-relative path: "${file}"`, path: `work_units.${unit.id}.allowed_test_changes` });
+      } else if (!unit.owns.some(scope => validOwnershipPattern(scope) && posix.matchesGlob(fold(file), fold(scope)))) {
+        issues.push({ level: "error", code: "test-exception-outside-ownership", message: `Unit "${unit.id}" cannot approve test changes outside its ownership: "${file}"`, path: `work_units.${unit.id}.allowed_test_changes` });
+      }
+    }
+  }
+  return issues;
+}
+
+/** Ownership uses canonical relative POSIX globs: *, ?, and whole-component **.
+ * Ambiguous wildcard intersections are treated conservatively. Dependency ordering
+ * permits sharing; only potentially concurrent units receive a hard overlap error.
  */
 function ownsOverlapIssues(units: WorkUnit[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const normalized: { unit: string; prefix: string }[] = [];
-
-  for (const u of units) {
-    for (const pattern of u.owns) {
-      const prefix = pattern
-        .replaceAll("\\", "/")
-        .replace(/\/\*\*.*$/, "")
-        .replace(/\/+$/, "");
-      if (prefix.includes("*")) continue;
-      normalized.push({ unit: u.id, prefix });
+  const normalized: { unit: string; pattern: string; prefix: string }[] = [];
+  const graph = new Map(units.map(unit => [unit.id, unit.depends_on ?? []]));
+  const dependsOn = (unit: string, target: string, seen = new Set<string>()): boolean => {
+    if (seen.has(unit)) return false;
+    seen.add(unit);
+    return (graph.get(unit) ?? []).some(dep => dep === target || dependsOn(dep, target, seen));
+  };
+  for (const unit of units) {
+    for (const pattern of unit.owns) {
+      const parts = pattern.split("/");
+      const valid = validOwnershipPattern(pattern);
+      if (!valid) {
+        issues.push({ level: "error", code: "invalid-ownership", message: `Unit "${unit.id}" has an unsafe or unsupported ownership glob: "${pattern}"`, path: `work_units.${unit.id}.owns` });
+        continue;
+      }
+      const firstMagic = parts.findIndex(part => /[*?]/.test(part));
+      const prefix = (firstMagic < 0 ? parts : parts.slice(0, firstMagic)).join("/");
+      normalized.push({ unit: unit.id, pattern, prefix: process.platform === "win32" ? prefix.toLowerCase() : prefix });
     }
   }
-
   for (let i = 0; i < normalized.length; i++) {
     for (let j = i + 1; j < normalized.length; j++) {
-      const a = normalized[i]!;
-      const b = normalized[j]!;
+      const a = normalized[i]!, b = normalized[j]!;
       if (a.unit === b.unit) continue;
-      if (a.prefix === b.prefix || a.prefix.startsWith(`${b.prefix}/`) || b.prefix.startsWith(`${a.prefix}/`)) {
+      if (a.prefix === "" || b.prefix === "" || a.prefix === b.prefix || a.prefix.startsWith(`${b.prefix}/`) || b.prefix.startsWith(`${a.prefix}/`)) {
+        const ordered = dependsOn(a.unit, b.unit) || dependsOn(b.unit, a.unit);
         issues.push({
-          level: "warning",
+          level: ordered ? "warning" : "error",
           code: "owns-overlap",
-          message: `Units "${a.unit}" and "${b.unit}" have overlapping ownership: "${a.prefix}" vs "${b.prefix}"`,
+          message: `Units "${a.unit}" and "${b.unit}" have potentially overlapping ownership: "${a.pattern}" vs "${b.pattern}" (${ordered ? "dependency ordered" : "concurrent ownership is unsafe; add ordering or disjoint scopes"})`,
           path: "work_units",
         });
       }

@@ -11,8 +11,16 @@ export interface ExecutionReport {
   findings: string[];
 }
 export type ExecutionEvent =
+  | { type: "heartbeat" }
   | { type: "thread"; id: string }
   | { type: "activity"; kind: string; status: string }
+  | {
+      type: "command";
+      id: string;
+      command: string;
+      exitCode: number;
+      status: "completed" | "failed";
+    }
   | { type: "usage"; input: number; cached: number; output: number }
   | { type: "report"; report: ExecutionReport };
 export interface ExecutionRequest {

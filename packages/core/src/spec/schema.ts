@@ -12,6 +12,36 @@ const BUDGET_VALUE = {
 
 const ID_PATTERN = "^[a-z0-9][a-z0-9-]*$";
 
+/** Provider identifiers are open-ended; reject unsafe command-like values. */
+export const modelIdSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: 200,
+  // The final negative lookahead requires the absolute end (unlike JS $).
+  pattern: "^(?!-)[^\\s\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])",
+} as const;
+
+export const executionModelsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    producer_model: modelIdSchema,
+    verifier_model: modelIdSchema,
+    integration_verifier_model: modelIdSchema,
+  },
+} as const;
+
+export const watchdogSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    idle_ms: { type: "integer", minimum: 10, maximum: 3_600_000 },
+    expected_ms: { type: "integer", minimum: 10, maximum: 3_600_000 },
+    hard_ms: { type: "integer", minimum: 10, maximum: 3_600_000 },
+    delivery_ms: { type: "integer", minimum: 10, maximum: 3_600_000 },
+  },
+} as const;
+
 export const workUnitSchema = {
   type: "object",
   additionalProperties: false,
@@ -24,7 +54,9 @@ export const workUnitSchema = {
     contracts: { type: "array", items: { type: "string" } },
     depends_on: { type: "array", items: { type: "string" } },
     acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    allowed_test_changes: { type: "array", uniqueItems: true, items: { type: "string", minLength: 1 } },
     budget_est: BUDGET_VALUE,
+    watchdog: watchdogSchema,
   },
 } as const;
 
@@ -75,6 +107,7 @@ export const specSchema = {
         bias: { enum: ["thorough", "fast", "cheap"] },
       },
     },
+    execution: executionModelsSchema,
     decision_gates: { type: "array", items: { type: "string" } },
     work_units: { type: "array", minItems: 1, items: workUnitSchema },
     agents: { type: "array", minItems: 1, items: agentSchema },
@@ -86,6 +119,7 @@ export const specSchema = {
       type: "object",
       additionalProperties: false,
       properties: {
+        watchdog: watchdogSchema,
         per_unit: { type: "object" },
         global_gates: { type: "array", items: { type: "string" } },
       },
@@ -162,7 +196,9 @@ export const amendmentSchema = {
               contracts: workUnitSchema.properties.contracts,
               depends_on: workUnitSchema.properties.depends_on,
               acceptance: workUnitSchema.properties.acceptance,
+              allowed_test_changes: workUnitSchema.properties.allowed_test_changes,
               budget_est: BUDGET_VALUE,
+              watchdog: watchdogSchema,
             },
           },
           assign_to: { type: "string" },

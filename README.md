@@ -27,6 +27,11 @@ Implemented:
 - A local management panel with reviewed mission launch, controlled recovery,
   crew contribution badges, dependency waiting reasons, and a durable command queue.
 - Fresh whole-project verification of the integrated result against configured gates.
+- Separate production and independent review model selections. See [model review](docs/model-review.md).
+- Task watchdogs, durable report acknowledgements and explicit recovery blocking.
+  See [task watchdog](docs/task-watchdog.md).
+- Command-backed verification receipts, protected existing tests, delivery integrity
+  checks and dependency-ordered ownership. See [verification trust](docs/verification-trust.md).
 
 The panel uses React 19, Tailwind CSS, and a shared SSE stream. Overview,
 workboard, team, activity, and decisions share one TanStack Query cache; Zustand

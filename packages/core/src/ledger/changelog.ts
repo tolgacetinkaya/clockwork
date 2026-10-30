@@ -61,6 +61,10 @@ function line(event: LedgerEvent): string | null {
     case "escalation.step":
       return `${unit} escalated to step ${String(data.step ?? "?")}.`;
     // High-frequency bookkeeping events stay out of the human view.
+    case "agent.watchdog":
+    case "agent.delivery_received":
+    case "agent.delivery_acknowledged":
+    case "agent.execution_reconciled":
     case "agent.spawned":
     case "agent.activity":
     case "agent.completed":

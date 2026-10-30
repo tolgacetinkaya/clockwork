@@ -106,6 +106,8 @@ export class CodexDecoder {
   private completed = false;
   private thread = false;
   private report: ExecutionReport | undefined;
+  private commandIds = new Set<string>();
+  private pendingCommands = new Map<string, string>();
   feed(chunk: string): ExecutionEvent[] {
     this.buffer += chunk;
     const events: ExecutionEvent[] = [];
@@ -142,6 +144,39 @@ export class CodexDecoder {
         case "item.completed": {
           if (!record(raw.item) || typeof raw.item.type !== "string")
             throw new Error("Invalid Codex item");
+          if (raw.item.type === "command_execution") {
+            const { id, command, exit_code: exitCode, status } = raw.item;
+            if (
+              typeof id !== "string" ||
+              !id.trim() ||
+              id !== id.trim() ||
+              id.length > 256 ||
+              /[\u0000-\u001f\u007f]/.test(id) ||
+              this.commandIds.has(id) ||
+              typeof command !== "string" ||
+              !command.trim() ||
+              command.length > 65_536 ||
+              command.includes("\0") ||
+              (this.pendingCommands.has(id) && this.pendingCommands.get(id) !== command) ||
+              (raw.type === "item.started" && this.pendingCommands.has(id))
+            )
+              throw new Error("Invalid or duplicate Codex completed command");
+            if (raw.type === "item.completed") {
+              if (
+                typeof exitCode !== "number" ||
+                !Number.isSafeInteger(exitCode) ||
+                (status !== "completed" && status !== "failed")
+              )
+                throw new Error("Invalid or duplicate Codex completed command");
+              this.commandIds.add(id);
+              this.pendingCommands.delete(id);
+              // Only transport-observed completion metadata is trusted. Tool output
+              // stays in the local CLI session and is never copied into the event.
+              events.push({ type: "command", id, command, exitCode, status });
+            } else {
+              this.pendingCommands.set(id, command);
+            }
+          }
           if (
             raw.type === "item.completed" &&
             raw.item.type === "agent_message"
@@ -197,7 +232,7 @@ export class CodexDecoder {
     return events;
   }
   finish(): ExecutionReport {
-    if (this.buffer.trim() || !this.thread || !this.completed || !this.report)
+    if (this.buffer.trim() || !this.thread || !this.completed || !this.report || this.pendingCommands.size)
       throw new Error(
         "Incomplete Codex execution stream or missing structured report",
       );
@@ -207,6 +242,8 @@ export class CodexDecoder {
 export interface CodexOptions {
   executable?: string;
   timeoutMs?: number;
+  /** Transport liveness only; never evidence of work progress. */
+  heartbeatMs?: number;
   windowsSandbox?: "elevated" | "unelevated" | "mxc";
 }
 export class CodexAdapter implements ExecutionAdapter {
@@ -214,10 +251,15 @@ export class CodexAdapter implements ExecutionAdapter {
   constructor(private readonly options: CodexOptions = {}) {}
   async *execute(request: ExecutionRequest): AsyncGenerator<ExecutionEvent> {
     request.signal.throwIfAborted();
+    const heartbeatMs = this.options.heartbeatMs ?? 5000;
+    if (!Number.isSafeInteger(heartbeatMs) || heartbeatMs < 10)
+      throw new Error("Codex heartbeat interval must be an integer of at least 10ms");
     const temp = await mkdtemp(join(tmpdir(), "clockwork-codex-"));
     let child: ReturnType<typeof spawn> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    let closed: Promise<void> | undefined;
     const controller = new AbortController();
     const abort = () =>
       controller.abort(new Error("Codex execution interrupted"));
@@ -245,6 +287,19 @@ export class CodexAdapter implements ExecutionAdapter {
         },
       );
       const processHandle = child;
+      let processClosed = false;
+      closed = new Promise<void>(resolve => processHandle.once("close", () => {
+        processClosed = true;
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        resolve();
+      }));
+      let pulse!: () => void;
+      const heartbeat = () => new Promise<void>(resolve => { pulse = resolve; });
+      let heartbeatReady = heartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (!processClosed) pulse();
+      }, heartbeatMs);
+      heartbeatTimer.unref();
       const exited = new Promise<{ code: number | null; error?: Error }>(
         (resolve) => {
           processHandle.once("error", () =>
@@ -273,11 +328,36 @@ export class CodexAdapter implements ExecutionAdapter {
       processHandle.stdin?.on("error", () => {});
       processHandle.stdin?.end(request.prompt);
       const decoder = new CodexDecoder();
-      for await (const chunk of processHandle.stdout!) {
+      const stdout = processHandle.stdout![Symbol.asyncIterator]();
+      // Retain exactly one outstanding read while the actual child timer supplies
+      // liveness events. Partial or malformed JSONL is never activity.
+      let next = stdout.next();
+      while (true) {
+        const received = await Promise.race([
+          next.then(value => ({ type: "chunk" as const, value })),
+          heartbeatReady.then(() => ({ type: "heartbeat" as const })),
+        ]);
         controller.signal.throwIfAborted();
-        for (const event of decoder.feed(String(chunk))) yield event;
+        if (received.type === "heartbeat") {
+          heartbeatReady = heartbeat();
+          if (!processClosed) yield { type: "heartbeat" };
+          continue;
+        }
+        if (received.value.done) break;
+        for (const event of decoder.feed(String(received.value.value))) yield event;
+        next = stdout.next();
       }
-      const exit = await exited;
+      let exit: Awaited<typeof exited>;
+      while (true) {
+        const received = await Promise.race([
+          exited.then(value => ({ type: "exit" as const, value })),
+          heartbeatReady.then(() => ({ type: "heartbeat" as const })),
+        ]);
+        controller.signal.throwIfAborted();
+        if (received.type === "exit") { exit = received.value; break; }
+        heartbeatReady = heartbeat();
+        if (!processClosed) yield { type: "heartbeat" };
+      }
       controller.signal.throwIfAborted();
       if (exit.error) throw exit.error;
       if (exit.code !== 0)
@@ -287,10 +367,14 @@ export class CodexAdapter implements ExecutionAdapter {
       yield { type: "report", report: decoder.finish() };
     } finally {
       if (timer) clearTimeout(timer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (killTimer) clearTimeout(killTimer);
       request.signal.removeEventListener("abort", abort);
       if (child && child.exitCode === null && child.signalCode === null)
         child.kill("SIGKILL");
+      // Do not settle the adapter until the child is actually closed. The runner
+      // watchdog bounds this wait and marks unconfirmed termination unreconciled.
+      await closed;
       await rm(temp, { recursive: true, force: true });
     }
   }
