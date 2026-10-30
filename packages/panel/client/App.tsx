@@ -15,7 +15,7 @@ import { useLivePanel, useSnapshot, postJSON } from "./live.js";
 import { usePanelUI } from "./state.js";
 import { Mark, Dialog } from "./ui.js";
 import { Layout } from "./layout.js";
-import { Companion } from "./companion.js";
+import { Onboarding } from "./onboarding.js";
 import { Overview } from "./overview.js";
 import { Workboard } from "./work.js";
 import { Mission } from "./mission.js";
@@ -118,7 +118,9 @@ export function App() {
           </div>
         ) : (
           <>
-            {view === "overview" ? (
+            {view === "start" ? (
+              <Onboarding snapshot={snapshot} />
+            ) : view === "overview" ? (
               <Overview snapshot={snapshot} />
             ) : view === "mission" ? (
               <Mission snapshot={snapshot} disabled={disabled} />
@@ -139,7 +141,7 @@ export function App() {
           </>
         )}
       </Layout>
-      <Companion snapshot={snapshot} />
+
       {notice ? (
         <div className="toast" role="status">
           <span>{notice}</span>

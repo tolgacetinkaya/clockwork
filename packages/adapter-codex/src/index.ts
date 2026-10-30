@@ -7,7 +7,12 @@ import type {
   ExecutionEvent,
   ExecutionReport,
   ExecutionRequest,
+  PlanningAdapter,
+  PlanningRequest,
+  PlanningEvent,
+  PlanningProposal,
 } from "@clockwork/core";
+import { planningProposalSchema, parsePlanningProposal } from "@clockwork/core";
 
 export const REPORT_SCHEMA = {
   type: "object",
@@ -101,14 +106,17 @@ export function buildExecArgs(
   ];
 }
 /** Strict framing, bounded lines; raw tool text/stderr never enters the ledger. */
-export class CodexDecoder {
+class StructuredCodexDecoder<T> {
+  constructor(private readonly parse: (text: string) => T) {}
   private buffer = "";
   private completed = false;
   private thread = false;
-  private report: ExecutionReport | undefined;
-  feed(chunk: string): ExecutionEvent[] {
+  private report: T | undefined;
+  private commandIds = new Set<string>();
+  private pendingCommands = new Map<string, string>();
+  feed(chunk: string): Exclude<ExecutionEvent, { type: "report" }>[] {
     this.buffer += chunk;
-    const events: ExecutionEvent[] = [];
+    const events: Exclude<ExecutionEvent, { type: "report" }>[] = [];
     let end: number;
     while ((end = this.buffer.indexOf("\n")) !== -1) {
       const line = this.buffer.slice(0, end).trim();
@@ -142,6 +150,39 @@ export class CodexDecoder {
         case "item.completed": {
           if (!record(raw.item) || typeof raw.item.type !== "string")
             throw new Error("Invalid Codex item");
+          if (raw.item.type === "command_execution") {
+            const { id, command, exit_code: exitCode, status } = raw.item;
+            if (
+              typeof id !== "string" ||
+              !id.trim() ||
+              id !== id.trim() ||
+              id.length > 256 ||
+              /[\u0000-\u001f\u007f]/.test(id) ||
+              this.commandIds.has(id) ||
+              typeof command !== "string" ||
+              !command.trim() ||
+              command.length > 65_536 ||
+              command.includes("\0") ||
+              (this.pendingCommands.has(id) && this.pendingCommands.get(id) !== command) ||
+              (raw.type === "item.started" && this.pendingCommands.has(id))
+            )
+              throw new Error("Invalid or duplicate Codex completed command");
+            if (raw.type === "item.completed") {
+              if (
+                typeof exitCode !== "number" ||
+                !Number.isSafeInteger(exitCode) ||
+                (status !== "completed" && status !== "failed")
+              )
+                throw new Error("Invalid or duplicate Codex completed command");
+              this.commandIds.add(id);
+              this.pendingCommands.delete(id);
+              // Only transport-observed completion metadata is trusted. Tool output
+              // stays in the local CLI session and is never copied into the event.
+              events.push({ type: "command", id, command, exitCode, status });
+            } else {
+              this.pendingCommands.set(id, command);
+            }
+          }
           if (
             raw.type === "item.completed" &&
             raw.item.type === "agent_message"
@@ -150,7 +191,7 @@ export class CodexDecoder {
               throw new Error("Missing Codex final message");
             // The final schema-conforming message replaces intermediate commentary.
             try {
-              this.report = parseReport(raw.item.text);
+              this.report = this.parse(raw.item.text);
             } catch {
               this.report = undefined;
             }
@@ -196,28 +237,60 @@ export class CodexDecoder {
       throw new Error("Codex event exceeds the size limit");
     return events;
   }
-  finish(): ExecutionReport {
-    if (this.buffer.trim() || !this.thread || !this.completed || !this.report)
+  finish(): T {
+    if (this.buffer.trim() || !this.thread || !this.completed || !this.report || this.pendingCommands.size)
       throw new Error(
         "Incomplete Codex execution stream or missing structured report",
       );
     return this.report;
   }
 }
+/** Execution receipt parsing remains identical for the production path. */
+export class CodexDecoder extends StructuredCodexDecoder<ExecutionReport> {
+  constructor() { super(parseReport); }
+}
+export class CodexPlanningDecoder extends StructuredCodexDecoder<PlanningProposal> {
+  constructor() {
+    super(text => {
+      let value: unknown;
+      try { value = JSON.parse(text); } catch { throw new Error("Codex returned invalid planning JSON"); }
+      return parsePlanningProposal(value);
+    });
+  }
+}
 export interface CodexOptions {
   executable?: string;
   timeoutMs?: number;
+  /** Transport liveness only; never evidence of work progress. */
+  heartbeatMs?: number;
   windowsSandbox?: "elevated" | "unelevated" | "mxc";
 }
-export class CodexAdapter implements ExecutionAdapter {
+export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
   readonly id = "codex";
   constructor(private readonly options: CodexOptions = {}) {}
   async *execute(request: ExecutionRequest): AsyncGenerator<ExecutionEvent> {
+    for await (const event of this.structured(request, REPORT_SCHEMA, new CodexDecoder())) {
+      if (event.type === "structured") yield { type: "report", report: event.value };
+      else yield event;
+    }
+  }
+  async *plan(request: PlanningRequest): AsyncGenerator<PlanningEvent> {
+    for await (const event of this.structured({ ...request, mode: "verify" }, planningProposalSchema, new CodexPlanningDecoder())) {
+      if (event.type === "structured") yield { type: "plan", proposal: event.value };
+      else yield event;
+    }
+  }
+  private async *structured<T>(request: ExecutionRequest, outputSchema: unknown, decoder: StructuredCodexDecoder<T>): AsyncGenerator<Exclude<ExecutionEvent, { type: "report" }> | { type: "structured"; value: T }> {
     request.signal.throwIfAborted();
+    const heartbeatMs = this.options.heartbeatMs ?? 5000;
+    if (!Number.isSafeInteger(heartbeatMs) || heartbeatMs < 10)
+      throw new Error("Codex heartbeat interval must be an integer of at least 10ms");
     const temp = await mkdtemp(join(tmpdir(), "clockwork-codex-"));
     let child: ReturnType<typeof spawn> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    let closed: Promise<void> | undefined;
     const controller = new AbortController();
     const abort = () =>
       controller.abort(new Error("Codex execution interrupted"));
@@ -225,7 +298,7 @@ export class CodexAdapter implements ExecutionAdapter {
     if (request.signal.aborted) abort();
     try {
       const schema = join(temp, "report.schema.json");
-      await writeFile(schema, JSON.stringify(REPORT_SCHEMA), { flag: "wx" });
+      await writeFile(schema, JSON.stringify(outputSchema), { flag: "wx" });
       const environment = { ...process.env };
       // Local saved CLI auth only. Never forward API-key credentials to a worker.
       delete environment.OPENAI_API_KEY;
@@ -245,6 +318,19 @@ export class CodexAdapter implements ExecutionAdapter {
         },
       );
       const processHandle = child;
+      let processClosed = false;
+      closed = new Promise<void>(resolve => processHandle.once("close", () => {
+        processClosed = true;
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        resolve();
+      }));
+      let pulse!: () => void;
+      const heartbeat = () => new Promise<void>(resolve => { pulse = resolve; });
+      let heartbeatReady = heartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (!processClosed) pulse();
+      }, heartbeatMs);
+      heartbeatTimer.unref();
       const exited = new Promise<{ code: number | null; error?: Error }>(
         (resolve) => {
           processHandle.once("error", () =>
@@ -272,25 +358,53 @@ export class CodexAdapter implements ExecutionAdapter {
       processHandle.stdout?.setEncoding("utf8");
       processHandle.stdin?.on("error", () => {});
       processHandle.stdin?.end(request.prompt);
-      const decoder = new CodexDecoder();
-      for await (const chunk of processHandle.stdout!) {
+      const stdout = processHandle.stdout![Symbol.asyncIterator]();
+      // Retain exactly one outstanding read while the actual child timer supplies
+      // liveness events. Partial or malformed JSONL is never activity.
+      let next = stdout.next();
+      while (true) {
+        const received = await Promise.race([
+          next.then(value => ({ type: "chunk" as const, value })),
+          heartbeatReady.then(() => ({ type: "heartbeat" as const })),
+        ]);
         controller.signal.throwIfAborted();
-        for (const event of decoder.feed(String(chunk))) yield event;
+        if (received.type === "heartbeat") {
+          heartbeatReady = heartbeat();
+          if (!processClosed) yield { type: "heartbeat" };
+          continue;
+        }
+        if (received.value.done) break;
+        for (const event of decoder.feed(String(received.value.value))) yield event;
+        next = stdout.next();
       }
-      const exit = await exited;
+      let exit: Awaited<typeof exited>;
+      while (true) {
+        const received = await Promise.race([
+          exited.then(value => ({ type: "exit" as const, value })),
+          heartbeatReady.then(() => ({ type: "heartbeat" as const })),
+        ]);
+        controller.signal.throwIfAborted();
+        if (received.type === "exit") { exit = received.value; break; }
+        heartbeatReady = heartbeat();
+        if (!processClosed) yield { type: "heartbeat" };
+      }
       controller.signal.throwIfAborted();
       if (exit.error) throw exit.error;
       if (exit.code !== 0)
         throw new Error(
           `Codex CLI exited unsuccessfully (${exit.code ?? "signal"})`,
         );
-      yield { type: "report", report: decoder.finish() };
+      yield { type: "structured", value: decoder.finish() };
     } finally {
       if (timer) clearTimeout(timer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (killTimer) clearTimeout(killTimer);
       request.signal.removeEventListener("abort", abort);
       if (child && child.exitCode === null && child.signalCode === null)
         child.kill("SIGKILL");
+      // Do not settle the adapter until the child is actually closed. The runner
+      // watchdog bounds this wait and marks unconfirmed termination unreconciled.
+      await closed;
       await rm(temp, { recursive: true, force: true });
     }
   }

@@ -29,14 +29,20 @@ it("runs the actual form plan through HTTP, real isolated workers, a failed comb
       expect(request.mode).toBe("verify");
       expect(await readFile(join(request.workspace, "a.txt"), "utf8")).toBe("a");
       expect(await readFile(join(request.workspace, "b.txt"), "utf8")).toBe("b");
+      yield { type: "command", id: "read-combined-files", command: "read a.txt and b.txt", exitCode: 0, status: "completed" };
     } else if (request.mode === "produce") {
       if (++producers === 2) release();
       await bothProducers;
       const id = request.prompt.match(/# Work unit: ([ab])/)![1]!;
       await writeFile(join(request.workspace, `${id}.txt`), id);
+    } else {
+      const id = request.prompt.match(/# Verification of work unit: ([ab])/)![1]!;
+      expect(await readFile(join(request.workspace, `${id}.txt`), "utf8")).toBe(id);
+      yield { type: "command", id: "read-unit-file", command: `read ${id}.txt`, exitCode: 0, status: "completed" };
     }
+    const unit = final ? undefined : request.prompt.match(/# (?:Work unit|Verification of work unit): ([ab])/)![1]!;
     yield { type: "usage", input: 10, cached: 0, output: 2 };
-    yield { type: "report", report: { outcome: final && gates === 1 ? "rework" : request.mode === "produce" ? "completed" : "accepted", summary: "Controlled verification", findings: final && gates === 1 ? ["Review required"] : [], evidence: [{ criterion: final ? "Both files compose correctly" : "File exists", command: "read file", result: "checked exact contents", passed: true }] } };
+    yield { type: "report", report: { outcome: final && gates === 1 ? "rework" : request.mode === "produce" ? "completed" : "accepted", summary: "Controlled verification", findings: final && gates === 1 ? ["Review required"] : [], evidence: [{ criterion: final ? "Both files compose correctly" : "File exists", command: final ? "read a.txt and b.txt" : `read ${unit}.txt`, result: "checked exact contents", passed: true }] } };
   } };
   const panel = await startPanel({ projectDir: project, execution: {
     run: options => runTeam({ ...options, adapter }),

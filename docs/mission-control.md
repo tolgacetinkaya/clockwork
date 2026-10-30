@@ -1,8 +1,9 @@
 # Mission control and the crew
 
-Mission control is the local UI for a reviewed Codex team run. It does not infer
-an engineering plan from a goal: you enter and edit the task breakdown, ownership,
-acceptance criteria, dependencies, and estimates before approving it.
+Mission control is the local UI for a reviewed Codex team run. Enter tasks manually
+or explicitly request an editable plan and team from a goal. Review ownership,
+acceptance criteria, dependencies and estimates before approving it. See
+[goal-driven planning](goal-planning.md) for generation, quota and cancellation details.
 
 ## Connect a target repository
 

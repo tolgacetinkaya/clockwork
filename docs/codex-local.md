@@ -24,9 +24,10 @@ with an optional foreground team scheduler; it is not a Codex desktop plugin.
 The adapter ignores general user configuration, disables configured MCP servers
 and nested Codex multi-agent spawning, and never uses full access or automatic
 approval bypasses. User/project instructions and execpolicy rules can still
-apply. Managed policy remains authoritative. Model selection is explicit with
-`--model`; without it, the isolated CLI invocation uses its default, not a
-Clockwork model-tier mapping. CLI account usage limits still apply.
+apply. Managed policy remains authoritative. Separate production and review models can be selected in the approved plan or
+through role-specific CLI defaults. Legacy `--model` remains a shared fallback;
+without a selection, the isolated CLI invocation uses its default. See
+[model selection and independent review](model-review.md). CLI account usage limits still apply.
 
 ## Prepare a run
 
@@ -55,6 +56,14 @@ already-configured Windows sandbox selection when needed). The Mission control
 view edits and reviews a plan before explicit approval and start. Docker demos
 and panels without this option cannot launch agents. See
 [Mission control](mission-control.md) for the complete workflow and recovery.
+
+## Prepare a plan from a goal
+
+Use `cw plan --goal "Your goal" --budget 100000` or the explicit goal-planning
+action in Mission control. The local planner returns an editable proposal and
+records its separate usage; it never approves or executes the work. Set
+`--planner-model` for planning independently of production/review models. See
+[goal-driven planning](goal-planning.md) for review and recovery boundaries.
 
 ## Execute one unit
 
@@ -89,7 +98,7 @@ while a team owns the project execution lock.
 ## Execute an approved team
 
 ```sh
-cw codex team --concurrency 2 --model <confirmed-model-id>
+cw codex team --concurrency 2 --producer-model <production-model-id> --verifier-model <review-model-id>
 ```
 
 The foreground scheduler starts ready units automatically and runs a fresh
@@ -184,3 +193,11 @@ Adapters must declare and test their actual capabilities before enabling a run.
 References: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode),
 [Codex SDK](https://learn.chatgpt.com/docs/codex-sdk),
 [Windows sandbox](https://learn.chatgpt.com/docs/windows/windows-sandbox).
+
+## Verification trust gate
+
+Existing test/configuration files are protected unless their exact paths are explicitly
+approved in the work unit's `allowed_test_changes`. Verification claims require
+matching successful CLI command receipts from that fresh verifier session. Unsupported
+or report-only evidence cannot certify acceptance. See [verification trust](verification-trust.md)
+for ownership, incomplete-work inventory, ignored-file limits and legacy receipt recovery.

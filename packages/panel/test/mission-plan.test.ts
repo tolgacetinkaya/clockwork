@@ -14,6 +14,45 @@ describe("reviewable mission plan", () => {
     expect(restoredTasks(spec)[0]?.estimate).toBe(1500);
     expect(budgetTokens("2m")).toBe(2000000);
   });
+  it("round-trips model choices without losing advanced spec or task settings", () => {
+    const base = planSpec("Ship", [task], 100000, "check", { producer_model: "fixture-producer", verifier_model: "fixture-verifier", integration_verifier_model: "fixture-final" });
+    base.meta.assumptions = ["Keep API compatible"];
+    base.priorities.bias = "cheap";
+    base.work_units[0]!.type = "research";
+    base.work_units[0]!.contracts = ["Stable API"];
+    base.work_units[0]!.allowed_test_changes = ["tests/api.test.ts"];
+    base.work_units[0]!.watchdog = { idle_ms: 5000 };
+    base.agents[0]!.capabilities = { tools: ["inspect"] };
+    base.agents[0]!.model_tier = "strong";
+    base.verification!.per_unit = { required: true };
+    base.verification!.watchdog = { hard_ms: 10000 };
+    base.checkpoints = { milestones: [{ at: "50%", mode: "soft" }] };
+    base.retrospective = { record: ["outcome"] };
+    const restored = planSpec(base.meta.goal, restoredTasks(base), 100000, "check", base.execution, base);
+    expect(restored).toEqual(base);
+    const renamed = planSpec("Updated", restoredTasks(base).map(task => ({ ...task, id: "renamed" })), 100000, "new check", { verifier_model: "changed-verifier" }, base);
+    expect(renamed.work_units[0]).toMatchObject({ id: "renamed", type: "research", contracts: ["Stable API"], watchdog: { idle_ms: 5000 } });
+    expect(renamed.assignment.renamed).toBe(base.assignment.api);
+    expect(renamed.agents).toEqual(base.agents);
+    expect(renamed.execution).toEqual({ verifier_model: "changed-verifier" });
+    expect(base.execution?.verifier_model).toBe("fixture-verifier");
+  });
+  it("leaves legacy blank selections absent and clears explicit role overrides", () => {
+    const blank = { producer_model: " ", verifier_model: "", integration_verifier_model: "" };
+    const legacy = planSpec("Ship", [task], 1000, "check");
+    expect(planSpec("Ship", restoredTasks(legacy), 1000, "check", blank, legacy)).toEqual(legacy);
+    expect(legacy).not.toHaveProperty("execution");
+    const selected = planSpec("Ship", [task], 1000, "check", { producer_model: " fixture-producer ", verifier_model: "fixture-verifier" });
+    expect(selected.execution?.producer_model).toBe("fixture-producer");
+    expect(planSpec("Ship", restoredTasks(selected), 1000, "check", blank, selected)).not.toHaveProperty("execution");
+  });
+  it("validates model bounds without restricting provider-specific IDs", () => {
+    expect(planIssues(planSpec("Ship", [task], 1000, "check", { verifier_model: "vendor/model:v2" }), 2)).toEqual([]);
+    expect(planIssues(planSpec("Ship", [task], 1000, "check", { verifier_model: "😀".repeat(200) }), 2)).toEqual([]);
+    for (const model of ["bad model", "-flag", "x".repeat(201), "😀".repeat(201), "bad\u0001model"]) {
+      expect(planIssues(planSpec("Ship", [task], 1000, "check", { producer_model: model }), 2).join(" ")).toContain("Model IDs");
+    }
+  });
   it("blocks missing evidence, unsafe IDs, invalid limits and dependency cycles", () => {
     const invalid = planSpec("", [{ ...task, id: "../bad", estimate: 0, owns: "", acceptance: "" }, { ...task, id: "b", dependencies: "c" }, { ...task, id: "c", dependencies: "b" }], 0, "");
     const issues = planIssues(invalid, 0).join(" ");
@@ -47,4 +86,16 @@ describe("workspace execution guard", () => {
     expect(workspaceHasExecution({ ...base, state: { ...base.state, outcome: "done" } })).toBe(true);
     expect(workspaceHasExecution({ ...base, state: { ...base.state, units: { task: { ...base.state.units.task!, status: "accepted" } } } })).toBe(true);
   });
+});
+
+
+it("round-trips editable generated assumptions and unresolved questions while preserving advanced settings", () => {
+  const generated = planSpec("Audit", [task], 10000, "read report");
+  generated.meta.constraints = ["Keep existing APIs\nNo migrations"]; generated.meta.assumptions = ["Initial assumption"]; generated.meta.open_questions = ["Initial question"];
+  generated.work_units[0]!.type = "research"; generated.agents[0]!.capabilities = { tools: ["inspect"] };
+  const edited = planSpec("Audit", restoredTasks(generated), 10000, "read report", undefined, generated, { assumptions: ["Confirmed scope"], open_questions: [] });
+  expect(edited.meta).toEqual({ goal: "Audit", constraints: ["Keep existing APIs\nNo migrations"], assumptions: ["Confirmed scope"], open_questions: [] });
+  expect(edited.work_units).toEqual(generated.work_units);
+  expect(edited.agents).toEqual(generated.agents);
+  expect(generated.meta.open_questions).toEqual(["Initial question"]);
 });

@@ -6,6 +6,10 @@ import { locales } from "../client/i18n.js";
 import { shellMessages } from "../client/locales/shell.js";
 import { screensMessages } from "../client/locales/screens.js";
 import { petMessages } from "../client/locales/pet.js";
+import { questMessages } from "../client/locales/quest.js";
+import { watchdogMessages } from "../client/locales/watchdog.js";
+import { modelMessages } from "../client/locales/models.js";
+import { workflowMessages } from "../client/locales/workflow.js";
 
 // A new t("...") without five translations must not silently ship English fallback.
 describe("interface catalog coverage", () => {
@@ -19,7 +23,7 @@ describe("interface catalog coverage", () => {
           const key = node.arguments[0];
           if (key && ts.isStringLiteral(key)) {
             for (const locale of locales.filter((locale) => locale !== "en")) {
-              if (![shellMessages, screensMessages, petMessages].some((catalog) => Object.hasOwn(catalog[locale], key.text))) missing.push(`${file}:${locale}:${key.text}`);
+              if (![shellMessages, screensMessages, petMessages, questMessages, workflowMessages, watchdogMessages, modelMessages].some((catalog) => Object.hasOwn(catalog[locale], key.text))) missing.push(`${file}:${locale}:${key.text}`);
             }
           }
         }

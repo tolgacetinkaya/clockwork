@@ -142,6 +142,14 @@ export async function readPanelData(
       agent.modelTier = definition.model_tier;
     }
   }
+  // Tracked executions separate actual adapter activity from watchdog heartbeats.
+  // Prefer the latest execution even when older records are outside the event tail.
+  const latestExecutions = new Map<string, { startedAt: string; lastActivityAt: string }>();
+  for (const execution of Object.values(state.executions ?? {})) {
+    const previous = latestExecutions.get(execution.agentId);
+    if (!previous || execution.startedAt >= previous.startedAt) latestExecutions.set(execution.agentId, execution);
+  }
+  for (const [agentId, execution] of latestExecutions) ensure(agentId).lastEventAt = execution.lastActivityAt;
   // An agent's status describes recorded work, never OS process liveness.
   return {
     schemaVersion: 1,

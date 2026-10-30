@@ -14,7 +14,8 @@
     "check:public": "node scripts/check-public-files.mjs",
     "check": "npm run typecheck && npm test && npm run check:public",
     "build": "npm run build --workspace @clockwork/panel",
-    "panel:dev": "npm run dev --workspace @clockwork/panel"
+    "panel:dev": "npm run dev --workspace @clockwork/panel",
+    "pet:desktop": "npm run start --workspace @clockwork/desktop"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

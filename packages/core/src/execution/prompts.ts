@@ -46,6 +46,14 @@ export function buildUnitPrompt(
 ## Project goal
 ${spec.meta.goal}
 
+## User constraints
+${list(spec.meta.constraints)}
+These user constraints govern the work and take precedence over assumptions.
+
+## Approved assumptions
+${list(spec.meta.assumptions)}
+Do not treat assumptions as permission to override user constraints.
+
 ## Your role
 ${agent.purpose}
 
@@ -67,7 +75,12 @@ ${list(upstreamContracts(spec, unit))}
 ## Acceptance criteria (a separate verifier will check these adversarially)
 ${list(unit.acceptance)}
 
-## Reporting
+${enforcement === "workspace" ? `## Validation integrity
+Existing tests and validation configuration are protected. The only exact paths approved for modification or new validation configuration are:
+${list(unit.allowed_test_changes)}
+New ordinary tests may be added within ownership. Never weaken unrelated assertions or add configuration to hide failures. Newly introduced executable stubs fail delivery; TODO/FIXME warnings remain visible.
+
+` : ""}## Reporting
 Your final message is a machine-consumed report, not prose for a human. Include:
 - status: what you completed and what you could not
 - files: every file you created or modified
@@ -84,6 +97,14 @@ export function buildVerifierPrompt(spec: Spec, unitId: string): string {
 
 ## Project goal
 ${spec.meta.goal}
+
+## User constraints
+${list(spec.meta.constraints)}
+These user constraints govern the work and take precedence over assumptions.
+
+## Approved assumptions
+${list(spec.meta.assumptions)}
+Do not treat assumptions as permission to override user constraints.
 
 ## Mandate
 You are an independent, adversarial verifier. The producer claims this unit is

@@ -2,6 +2,10 @@ import { useSyncExternalStore } from "react";
 import { shellMessages } from "./locales/shell.js";
 import { screensMessages } from "./locales/screens.js";
 import { petMessages } from "./locales/pet.js";
+import { questMessages } from "./locales/quest.js";
+import { watchdogMessages } from "./locales/watchdog.js";
+import { modelMessages } from "./locales/models.js";
+import { workflowMessages } from "./locales/workflow.js";
 
 export const locales = ["en", "tr", "es", "de", "fr", "pt"] as const;
 export type Locale = (typeof locales)[number];
@@ -62,7 +66,7 @@ export function setLocale(locale: Locale): void {
   if (changed) listeners.forEach((listener) => listener());
 }
 export function initializeLocale(): void { setLocale(currentLocale); }
-const catalogs: Catalog[] = [shellMessages, screensMessages, petMessages];
+const catalogs: Catalog[] = [shellMessages, screensMessages, petMessages, questMessages, workflowMessages, watchdogMessages, modelMessages];
 export function translate(locale: Locale, message: string, values: Values = {}): string {
   const translated = locale === "en" ? message : catalogs.reduce<string | undefined>((found, catalog) => found ?? (Object.prototype.hasOwnProperty.call(catalog[locale], message) ? catalog[locale][message] : undefined), undefined) ?? message;
   return translated.replace(/\{([a-zA-Z0-9_]+)\}/g, (placeholder, key: string) =>

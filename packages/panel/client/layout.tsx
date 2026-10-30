@@ -1,6 +1,7 @@
 import { t, useI18n, locales, localeNames } from "./i18n.js";
 import {
   LayoutDashboard,
+  BookOpen,
   Columns3,
   Users,
   Activity,
@@ -20,6 +21,7 @@ import type { PanelSnapshot, ControlState } from "../src/protocol.js";
 import { usePanelUI } from "./state.js";
 import { Mark } from "./ui.js";
 const navigation = [
+  { id: "start", label: "Getting started", Icon: BookOpen },
   { id: "overview", label: "Overview", Icon: LayoutDashboard },
   { id: "mission", label: "Mission control", Icon: Play },
   { id: "workboard", label: "Workboard", Icon: Columns3 },
@@ -61,16 +63,16 @@ export function Layout({
     snapshot?.control.kill ||
     snapshot?.state.paused;
   return (
-    <div className="app-shell">
+    <div className={`app-shell view-${view}`}>
       <aside className="sidebar">
         <a
           href="#"
           className="brand"
           onClick={(event) => {
             event.preventDefault();
-            setView("overview");
+            setView("start");
           }}
-          aria-label={t("Clockwork overview")}
+          aria-label={t("Getting started")}
         >
           <Mark />
           <span>
@@ -101,7 +103,7 @@ export function Layout({
               className={`nav-item ${view === id ? "active" : ""}`}
               onClick={() => setView(id)}
             >
-              <Icon size={18} strokeWidth={1.7} />
+              <Icon size={22} strokeWidth={1.7} />
               <span>{t(label)}
             </span>
               {id === "decisions" && decisions ? (
@@ -113,23 +115,7 @@ export function Layout({
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <label className="language-selector">
-            <span>{t("Language")}
-            </span>
-            <select
-              value={locale}
-              onChange={(event) => {
-                const next = locales.find((item) => item === event.target.value);
-                if (next) setLocale(next);
-              }}
-            >
-              {locales.map((item) => (
-                <option key={item} value={item} lang={item === "pt" ? "pt-BR" : item}>
-                  {localeNames[item]}
-                </option>
-              ))}
-            </select>
-          </label>
+
           <div className="local-note">
             <span className="local-dot" />
             <div>
@@ -167,6 +153,24 @@ export function Layout({
             </strong>
           </div>
           <div className="topbar-actions">
+          <label className="language-selector">
+            <span>{t("Language")}
+            </span>
+            <select
+              aria-label={t("Language")}
+              value={locale}
+              onChange={(event) => {
+                const next = locales.find((item) => item === event.target.value);
+                if (next) setLocale(next);
+              }}
+            >
+              {locales.map((item) => (
+                <option key={item} value={item} lang={item === "pt" ? "pt-BR" : item}>
+                  {localeNames[item]}
+                </option>
+              ))}
+            </select>
+          </label>
             <span
               className={`connection connection-${connection}`}
               role="status"
@@ -206,7 +210,7 @@ export function Layout({
                 {snapshot?.state.runId ?? t("Waiting for a run")}
               </span>
             </span>
-            <div className="run-actions">
+            {snapshot?.mode !== "recorded-demo" ? <div className="run-actions">
               {requested ? (
                 <span className="requested-state">{requested}</span>
               ) : null}
@@ -247,7 +251,7 @@ export function Layout({
                 <Plus size={14} />
                 {t("Add note")}
               </button>
-            </div>
+            </div> : null}
           </div>
           {children}
           <footer className="workspace-footer">

@@ -46,6 +46,10 @@ export const EVENT_TYPES = [
   "agent.completed",
   "agent.activity",
   "agent.error",
+  "agent.watchdog",
+  "agent.delivery_received",
+  "agent.delivery_acknowledged",
+  "agent.execution_reconciled",
   // interaction family
   "interaction.questions_batched",
   "interaction.answers_received",
@@ -127,6 +131,20 @@ export function isSafeId(value: unknown): value is string {
     !Object.prototype.hasOwnProperty.call(Object.prototype, value);
 }
 
+/** UUIDs identify attempts independently of reused agent or unit names. */
+export function isExecutionId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function validWatchdog(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const policy = value as Record<string, unknown>;
+  const ms = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 10 && n <= 3_600_000;
+  return Object.keys(policy).every(k => ["idle_ms", "expected_ms", "hard_ms", "delivery_ms"].includes(k)) &&
+    ms(policy.idle_ms) && ms(policy.hard_ms) && ms(policy.delivery_ms) &&
+    (policy.expected_ms === undefined || (ms(policy.expected_ms) && Number(policy.expected_ms) < Number(policy.hard_ms)));
+}
+
 function validateData(event: LedgerEvent, issues: ValidationIssue[]): void {
   const d = event.data ?? {};
   const fail = (message: string) => issues.push({ level: "error", code: "event-data", message });
@@ -138,6 +156,36 @@ function validateData(event: LedgerEvent, issues: ValidationIssue[]): void {
   }
   if (event.type.startsWith("agent.") && !isSafeId(event.agent_id)) fail(`${event.type} requires agent_id`);
   switch (event.type) {
+    case "agent.spawned":
+      if (d.watchdog !== undefined) {
+        if (!validWatchdog(d.watchdog)) fail("Invalid resolved watchdog policy");
+        if (!isExecutionId(d.execution)) fail("Tracked spawn requires execution UUID");
+        if (!["produce", "verify", "integration_verify"].includes(String(d.mode))) fail("Tracked spawn requires execution mode");
+        if (d.mode !== "integration_verify" && !isSafeId(event.unit_id)) fail("Unit execution requires unit_id");
+        if (d.mode === "integration_verify" && event.unit_id !== undefined) fail("Integration execution must not have unit_id");
+      }
+      break;
+    case "agent.watchdog":
+      if (!isExecutionId(d.execution)) fail("Watchdog requires execution UUID");
+      if (!["idle", "overdue", "hard_timeout", "delivery_timeout", "recovered"].includes(String(d.kind))) fail("Invalid watchdog kind");
+      if (!tokens(d.elapsed_ms) || !tokens(d.idle_ms)) fail("Watchdog durations must be finite and nonnegative");
+      break;
+    case "agent.delivery_received":
+      if (!isExecutionId(d.execution) || !isSafeId(d.delivery_id)) fail("Delivery requires execution UUID and delivery_id");
+      if (typeof d.outcome !== "string" || !d.outcome.trim()) fail("Delivery requires outcome");
+      break;
+    case "agent.delivery_acknowledged":
+      if (!isExecutionId(d.execution) || !isSafeId(d.delivery_id)) fail("Acknowledgement requires execution UUID and delivery_id");
+      if (!version(d.received_seq)) fail("Acknowledgement requires received_seq");
+      if (!["completed", "accepted", "rework", "blocked", "rejected"].includes(String(d.outcome))) fail("Invalid acknowledgement outcome");
+      break;
+    case "agent.execution_reconciled":
+      if (!isExecutionId(d.execution)) fail("Reconciliation requires execution UUID");
+      if (event.actor !== "user" || typeof d.reason !== "string" || !d.reason.trim()) fail("Reconciliation requires user authorization and reason");
+      break;
+    case "agent.error":
+      if (d.execution_unreconciled !== undefined && typeof d.execution_unreconciled !== "boolean") fail("Invalid execution_unreconciled flag");
+      break;
     case "unit.retry_requested":
       if (event.actor !== "user" || typeof d.reason !== "string" || !d.reason.trim()) fail("Retry requires user authorization and reason");
       break;

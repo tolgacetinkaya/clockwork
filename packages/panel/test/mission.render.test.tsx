@@ -6,6 +6,7 @@ import { reduceLedger, buildBudgetReport } from "@clockwork/core";
 import { IntegrationEvidence } from "../client/verification-evidence.js";
 import { Team } from "../client/team.js";
 import { Mission } from "../client/mission.js";
+import { planSpec } from "../client/mission-plan.js";
 import type { PanelSnapshot } from "../src/protocol.js";
 const state = reduceLedger([]);
 const snapshot: PanelSnapshot = { schemaVersion: 1, mode: "recorded-demo", streamId: "test", revision: 1, updatedAt: "2026-10-29", state, budget: buildBudgetReport(state), events: [], eventCount: 0, agents: [], spec: null, control: { paused: false, kill: false }, queue: { queued: [], consumedSeq: 0 }, issues: [], launch: { enabled: false, disabledReason: "Recorded Docker demo cannot launch local agents.", status: "idle" } };
@@ -18,6 +19,24 @@ describe("mission control rendering", () => {
     expect(html).toContain("Estimated tokens");
     expect(html).toContain("read-only integration workspace");
     expect(html).toMatch(/disabled=""[^>]*>.*?Approve reviewed plan/s);
+  });
+  it("restores model fields and displays the approved-plan selections for review", () => {
+    const spec = planSpec("Goal", [{ id: "api", description: "API", owns: "api/**", acceptance: "works", dependencies: "", estimate: 100 }], 10000, "check", { producer_model: "fixture-producer", verifier_model: "fixture-verifier", integration_verifier_model: "fixture-final" });
+    const current = { ...snapshot, mode: "workspace" as const, launch: { enabled: true, status: "idle" as const, draft: { revision: "saved", spec } } };
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(Mission, { snapshot: current, disabled: false })));
+    expect(html).toMatch(/id="mission-producer-model"[^>]*value="fixture-producer"/);
+    expect(html).toMatch(/id="mission-verifier-model"[^>]*value="fixture-verifier"/);
+    expect(html).toMatch(/id="mission-integration-model"[^>]*value="fixture-final"/);
+    expect(html).toContain("<dd>fixture-producer</dd>");
+    expect(html).toContain("<dd>fixture-verifier</dd>");
+    expect(html).toContain("<dd>fixture-final</dd>");
+    expect(html).toContain("separate sessions, even with the same model");
+    expect(html).toContain("does not guarantee independent judgment");
+  });
+  it("explains inherited models for legacy plans", () => {
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(Mission, { snapshot, disabled: false })));
+    expect(html).toContain("<dd>Host / CLI default</dd>");
+    expect(html).toContain("<dd>Follows resolved verifier</dd>");
   });
 });
 
@@ -39,6 +58,7 @@ describe("compact crew presentation", () => {
     const html = renderToStaticMarkup(createElement(Team, { snapshot: crew }));
     expect(html).toContain("Final review"); expect(html).toContain("Whole-project review");
     expect(html).toContain("Execution identity"); expect(html).toContain("Agent details");
+    expect(html).toContain("recorded launch requests, not provider-attested model identity");
     expect(html).toMatch(/<details[^>]*><summary>Execution identity<\/summary><code>integration-generated-long-execution-id/);
     expect(html).not.toContain("<h2>Integration Generated");
   });

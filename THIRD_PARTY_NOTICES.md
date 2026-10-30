@@ -11,3 +11,8 @@ Newsreader: The Newsreader Project Authors, <https://github.com/productiontype/N
 
 The package lock records dependency versions. Their upstream package license
 files are retained by normal npm installation and in the local Docker image.
+
+The panel uses Motion for React for state, gesture and character animation.
+Motion and its runtime dependencies retain their MIT license notices, bundled
+in `packages/panel/client/public/assets/motion-licenses.txt` and served at
+`/assets/motion-licenses.txt`.

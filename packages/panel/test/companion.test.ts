@@ -158,7 +158,7 @@ describe("companion evidence", () => {
         expect(readPetPreferences({
             getItem: () => '{"version":1,"variant":"<script>","muted":false}'
         })).toMatchObject({
-            variant: "brass",
+            variant: "puffin",
             muted: false,
             hidden: false
         });
@@ -253,5 +253,14 @@ describe("companion bubble presentation", () => {
   it("replaces old guidance only with a new meaningful transition", () => {
     expect(companionPresentation(previous, { ...previous, kind: "passed", revision: 2 }, true)).toEqual({ action: "announce", message: "Combined verification passed" });
     expect(companionPresentation(previous, previous, false)).toEqual({ action: "clear" });
+  });
+});
+
+describe("companion creature preferences", () => {
+  it("defaults new users to Piko and preserves legacy saved selections", () => {
+    expect(readPetPreferences().variant).toBe("puffin");
+    for (const variant of ["brass", "mint", "violet", "puffin"]) {
+      expect(readPetPreferences({ getItem: () => JSON.stringify({ version: 1, variant, hidden: true, muted: false }) })).toMatchObject({ variant, hidden: true, muted: false });
+    }
   });
 });

@@ -1,6 +1,6 @@
 # Companion and language packs
 
-The panel includes an original, code-drawn Clockwork companion. It observes the
+Clockwork includes an original desktop companion. It observes the
 same SSE snapshot as the screens; it does not run another agent or make model
 calls. Its expression and summary reflect recorded work, connection health,
 operator input, and combined verification. Process liveness is not inferred.
@@ -11,9 +11,10 @@ small launcher. Reduced-motion preferences are respected. Recorded demos and
 stale connections are explicitly distinguished from current execution. Accepted
 tasks alone never imply that the final integration passed verification.
 
-This is an in-panel companion. Native macOS/Windows installers, a desktop overlay,
-background operation after closing the browser, and OS notifications are not part
-of this increment.
+The native preview runs outside the browser through Electron; see
+[desktop companion](desktop-companion.md). Windows rendering and pointer dragging
+have runtime verification; macOS and signed installers remain unverified. The browser
+no longer mounts a duplicate pet. OS notifications are not implemented.
 
 ## Languages
 
@@ -41,7 +42,10 @@ translations are open to native-speaker review.
 
 ## Original character artwork
 
-The pet is drawn in React SVG and animated with CSS. Character definitions and
-behavior are separate so artwork can change without changing execution state.
-Edit the companion's typed definitions and drawing code to create another
-Clockwork character; no remote asset or executable pet-plugin loading is needed.
+Piko uses an original transparent front-view atlas with twenty poses across five
+rows: idle/blink, walking, work/focus, attention/wave and success/hop. CSS selects
+the atlas cells; Motion animates the remaining original raster characters. Sprite
+artwork and state policy remain separate. Deliberate native dragging selects walk
+frames; recorded demos and historical successes never invent live work or a fresh
+success reaction. Reduced motion freezes the first idle frame. No remote image
+requests or executable pet plugins are loaded.

@@ -1,11 +1,14 @@
 import type {
   BudgetReport,
   Command,
+  ExecutionTracking,
   LedgerEvent,
   QueueStatus,
   RunState,
 } from "@clockwork/core";
 import type { Spec, WorkUnit } from "../../core/src/spec/types.js";
+
+export type PanelExecution = ExecutionTracking;
 
 /** Shared transport types only: importing this module into a browser runs no core code. */
 export interface ControlState {
@@ -25,6 +28,8 @@ export interface PanelAgent {
 }
 export interface LaunchState {
   enabled: boolean;
+  planSupported?: boolean;
+  planning?: { requestId?: string; status: "running" | "completed" | "error"; summary?: string; usage?: { input: number; cached: number; output: number }; provider?: string; model?: string; draftRevision?: string; error?: string };
   disabledReason?: string;
   draft?: { revision: string; spec: Spec };
   approvalToken?: string;

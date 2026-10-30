@@ -119,6 +119,12 @@ describe("provider-neutral unit runner", () => {
           status: "started",
         };
         if (change) await change(request);
+        if (request.mode === "verify") {
+          // Controlled adapter receipt follows the concrete read, independently
+          // of whichever report this test asks the runner to evaluate.
+          await readFile(join(request.workspace, "greeting.txt"), "utf8");
+          yield { type: "command", id: "read-greeting", command: "read greeting.txt", exitCode: 0, status: "completed" };
+        }
         yield { type: "usage", input: 10, cached: 8, output: 2 };
         yield { type: "report", report };
       },

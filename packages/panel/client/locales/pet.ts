@@ -236,3 +236,29 @@ for (const locale of Object.keys(requestMessages) as (keyof typeof requestMessag
   petMessages[locale]["Stop requested · activity may continue"] = requestMessages[locale][0]!;
   petMessages[locale]["Pause requested · activity may continue"] = requestMessages[locale][1]!;
 }
+
+const animalMessages = {
+  tr: ["Kara · Baykuş", "Moss · Kaplumbağa", "Nova · Tilki", "Piko · Deniz papağanı"],
+  es: ["Kara · Búho", "Moss · Tortuga", "Nova · Zorro", "Piko · Frailecillo"],
+  de: ["Kara · Eule", "Moss · Schildkröte", "Nova · Fuchs", "Piko · Papageitaucher"],
+  fr: ["Kara · Hibou", "Moss · Tortue", "Nova · Renard", "Piko · Macareux"],
+  pt: ["Kara · Coruja", "Moss · Tartaruga", "Nova · Raposa", "Piko · Papagaio-do-mar"],
+};
+for (const locale of Object.keys(animalMessages) as (keyof typeof animalMessages)[]) {
+  ["Kara · Owl", "Moss · Turtle", "Nova · Fox", "Piko · Puffin"].forEach((key, index) => {
+    petMessages[locale][key] = animalMessages[locale][index]!;
+  });
+}
+
+const placementMessages = {
+  tr: ["Yoldaşı taşı", "Taşımak için sürükleyin; ok tuşları 16 piksel taşır.", "Yoldaşı sabitle", "Yoldaşı serbest bırak", "Yoldaş konumunu sıfırla"],
+  es: ["Mover compañero", "Arrastra para mover; las flechas desplazan 16 píxeles.", "Acoplar compañero", "Desacoplar compañero", "Restablecer posición del compañero"],
+  de: ["Begleiter verschieben", "Zum Verschieben ziehen; Pfeiltasten bewegen um 16 Pixel.", "Begleiter andocken", "Begleiter lösen", "Begleiterposition zurücksetzen"],
+  fr: ["Déplacer le compagnon", "Faites glisser pour déplacer ; les flèches déplacent de 16 pixels.", "Ancrer le compagnon", "Détacher le compagnon", "Réinitialiser la position du compagnon"],
+  pt: ["Mover companheiro", "Arraste para mover; as setas movem 16 pixels.", "Ancorar companheiro", "Desancorar companheiro", "Redefinir posição do companheiro"],
+};
+for (const locale of Object.keys(placementMessages) as (keyof typeof placementMessages)[]) {
+  ["Move companion", "Drag to move; arrow keys move by 16 pixels.", "Dock companion", "Float companion", "Reset companion position"].forEach((key, index) => {
+    petMessages[locale][key] = placementMessages[locale][index]!;
+  });
+}
