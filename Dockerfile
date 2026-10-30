@@ -6,7 +6,8 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/panel/package.json packages/panel/package.json
 COPY packages/cli/package.json packages/cli/package.json
 COPY packages/adapter-claude/package.json packages/adapter-claude/package.json
-RUN npm ci --no-audit --no-fund
+COPY packages/desktop/package.json packages/desktop/package.json
+RUN ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund
 
 COPY packages/ ./packages/
 COPY docker/ ./docker/

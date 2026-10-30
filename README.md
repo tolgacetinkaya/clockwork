@@ -170,3 +170,7 @@ details. Release preparation is described in [docs/releasing.md](docs/releasing.
 
 [MIT](LICENSE). Bundled fonts retain their OFL license; see
 [third-party notices](THIRD_PARTY_NOTICES.md).
+
+A transparent native desktop companion preview can run outside the browser with
+`npm run pet:desktop`. See [desktop companion](docs/desktop-companion.md) for
+setup, controls, security boundaries and platform validation.

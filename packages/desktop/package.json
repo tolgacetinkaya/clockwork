@@ -1,0 +1,13 @@
+{
+  "name": "@clockwork/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron main.cjs"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0"
+  }
+}

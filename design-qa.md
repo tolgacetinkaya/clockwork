@@ -73,3 +73,15 @@ The companion is now mounted once at the application boundary and portaled to a 
 Validation: server/client type checks and all139 panel tests across21 files passed. New boundary tests cover damaged storage, non-finite coordinates, negative positions, resize and undersized viewports. Browser verified actual pointer drag from(992,368) to(362,215), one ArrowLeft step to(346,215), reload persistence, navigation persistence with one companion instance, dock/float toggles, and390x600 viewport clamping with expanded settings. Fresh Docker tab: one floating companion, working keyboard movement, no console warnings/errors. Production build and public-file checks passed. Evidence: `arcade-floating-pet.png` in the local QA artifact folder.
 
 Floating follow-up result: passed. Movement is within the browser viewport; cross-application desktop overlay requires a separate desktop host.
+
+
+## Native desktop companion follow-up
+
+The user clarified that browser-contained dragging was insufficient. Added a separate Electron host and a preload-only desktop flag to mount exactly one shared companion. Native CSS removes card/background/frame; only the character, bubble and settings remain. Transparent window, native drag region, always-on-top, tray actions and persisted display-clamped native bounds are configured. The browser panel remains available separately.
+
+Windows runtime evidence: native window `Clockwork companion` opened over desktop wallpaper, rendering Piko and recorded-demo status without browser chrome. Screenshot capture confirmed transparency. Automated coordinate input was intercepted by underlying windows before its drag began; this is a limitation of the native-input acceptance run, not a passing drag assertion. Manual drag confirmation requested. macOS runtime validation was not performed. Server/client type checks and145 focused desktop/panel tests passed; Docker build healthy. Native scripts pass Node syntax checks. Source IPC/navigation review added exact main-frame redirect/request guards and rejects out-of-range saved display points before native calls.
+
+Native result: transparent rendering verified; manual drag/click-through acceptance pending.
+
+
+Native runtime repair: user confirmed the first desktop pet did not drag and a duplicate browser Moss was confusing. Removed the browser companion mount. Windows uses validated shaped input regions for click-through instead of ignore-mouse hover switching. A static transparent grab surface uses pointer capture and event-snapshot coordinates; the owning main frame can only move its own native pet window. Automated Windows drag now proved a(-55,+50) native window-position delta, saved from(2244,756) to(2189,806). Settings button interaction also verified. Hidden pets remove the invisible grab surface; desktop-only settings omit inactive browser navigation actions. Current Windows result: frameless transparent rendering and dragging verified. macOS remains unverified.
