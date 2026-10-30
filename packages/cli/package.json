@@ -7,11 +7,11 @@
   },
   "dependencies": {
     "@clockwork/adapter-claude": "*",
+    "@clockwork/adapter-codex": "*",
     "@clockwork/core": "*",
     "@clockwork/panel": "*",
-    "yaml": "^2.9.1",
-    "@clockwork/adapter-codex": "*",
-    "@clockwork/runner": "*"
+    "@clockwork/runner": "*",
+    "yaml": "^2.9.1"
   },
   "license": "MIT",
   "repository": {
