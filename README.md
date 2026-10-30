@@ -24,8 +24,9 @@ Implemented:
 - Claude Code prompt generation and a PreToolUse approval hook.
 - A local management panel, control requests, and a durable command queue.
 
-The panel currently uses plain HTML, CSS, and JavaScript, with polling. A React
-and Tailwind redesign and live event streaming are planned. The panel container
+The panel uses React 19, Tailwind CSS, and a shared SSE stream. Overview,
+workboard, team, activity, and decisions share one TanStack Query cache; Zustand
+keeps UI state separate. The panel container
 shows recorded activity; it does not start an orchestrator or AI agents.
 
 ## Get started
@@ -82,6 +83,10 @@ commands; `commands ack <seq>` acknowledges an applied prefix. Consumers must
 reconcile duplicate delivery against the ledger. See
 [execution hardening](docs/execution-hardening.md) for installation boundaries,
 storage recovery, and known limitations.
+
+For frontend development, run the API on 47831 and `npm run panel:dev` in a
+second terminal. Vite uses 47832 and proxies API/SSE. See
+[panel architecture](docs/panel-architecture.md) for ownership and recovery.
 
 ## Claude Code integration
 
@@ -142,4 +147,5 @@ details. Release preparation is described in [docs/releasing.md](docs/releasing.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). Bundled fonts retain their OFL license; see
+[third-party notices](THIRD_PARTY_NOTICES.md).

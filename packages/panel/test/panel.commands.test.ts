@@ -132,15 +132,11 @@ describe("panel command channel", () => {
     expect(res.status).toBe(400);
   });
 
-  it("serves / with the command-channel UI markers", async () => {
-    const res = await fetch(`${handle.url}/`);
-    const html = await res.text();
-    expect(html).toContain('id="answers-text"');
-    expect(html).toContain('id="answers-btn"');
-    expect(html).toContain('id="note-text"');
-    expect(html).toContain('id="note-btn"');
-    expect(html).toContain("resolve-btn");
-    expect(html).toContain('id="commands-status"');
-    expect(html).toContain("/api/commands");
+  it("includes pending operator requests in the shared snapshot", async () => {
+    await fetch(`${handle.url}/api/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "note", data: { text: "Shared across screens" } }) });
+    const response = await fetch(`${handle.url}/api/snapshot`);
+    expect(response.status).toBe(200);
+    const snapshot = await response.json() as { queue: QueueStatus };
+    expect(snapshot.queue.queued[0]).toMatchObject({ type: "note", data: { text: "Shared across screens" } });
   });
 });

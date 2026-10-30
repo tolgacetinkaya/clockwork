@@ -30,7 +30,7 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 }
 
-const panel = await startPanel({ projectDir, port, host: "0.0.0.0" });
+const panel = await startPanel({ projectDir, port, host: "0.0.0.0", demo: Boolean(seed) });
 console.log(`Clockwork panel listening on 0.0.0.0:${port}; state: ${projectDir}`);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => { void panel.close().then(() => process.exit(0)); });
