@@ -43,6 +43,7 @@ export const EVENT_TYPES = [
   // agent family
   "agent.spawned",
   "agent.completed",
+  "agent.activity",
   "agent.error",
   // interaction family
   "interaction.questions_batched",
@@ -136,6 +137,9 @@ function validateData(event: LedgerEvent, issues: ValidationIssue[]): void {
   }
   if (event.type.startsWith("agent.") && !isSafeId(event.agent_id)) fail(`${event.type} requires agent_id`);
   switch (event.type) {
+    case "agent.activity":
+      if (typeof d.kind !== "string" || !d.kind || d.kind.length > 80 || !["started", "updated", "completed"].includes(String(d.status))) fail("Invalid agent activity");
+      break;
     case "run.started":
       if (!isSafeId(d.run_id)) fail("run.started requires run_id");
       if (d.ledger_schema_version !== undefined && d.ledger_schema_version !== LEDGER_SCHEMA_VERSION) fail("Invalid ledger_schema_version");

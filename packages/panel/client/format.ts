@@ -51,6 +51,7 @@ export function eventTitle(event: LedgerEvent): string {
     "unit.failed": "Work unit failed",
     "unit.cancelled": "Work unit cancelled",
     "agent.spawned": "Agent assigned",
+    "agent.activity": "Agent activity",
     "agent.completed": "Agent completed",
     "agent.error": "Agent error recorded",
     "interaction.questions_batched": "Questions need an answer",

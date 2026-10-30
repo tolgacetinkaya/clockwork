@@ -1,0 +1,17 @@
+{
+  "name": "@clockwork/runner",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@clockwork/core": "*"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tolgacetinkaya/clockwork.git",
+    "directory": "packages/runner"
+  }
+}

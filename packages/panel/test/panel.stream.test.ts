@@ -179,6 +179,36 @@ describe("shared live panel transport", () => {
     ).toBe("attention");
   });
 
+  it("associates an independent verifier with its unit and streams its recorded activity", async () => {
+    await writer.append("agent.completed", {
+      agent_id: "builder",
+      unit_id: "task",
+    });
+    await writer.append("unit.verify_started", { unit_id: "task" });
+    await writer.append("agent.spawned", {
+      agent_id: "builder-codex-verify-1",
+      unit_id: "task",
+      data: { mode: "verify", provider: "codex" },
+    });
+    await writer.append("agent.activity", {
+      agent_id: "builder-codex-verify-1",
+      unit_id: "task",
+      data: { kind: "command_execution", status: "completed" },
+    });
+    const snapshot = (await (
+      await fetch(`${panel.url}/api/snapshot`)
+    ).json()) as PanelSnapshot;
+    const verifier = snapshot.agents.find(
+      (agent) => agent.id === "builder-codex-verify-1",
+    );
+    expect(verifier?.units).toEqual(["task"]);
+    expect(verifier?.status).toBe("verifying");
+    expect(
+      snapshot.agents.find((agent) => agent.id === "builder")?.status,
+    ).toBe("completed");
+    expect(snapshot.events.at(-1)?.type).toBe("agent.activity");
+  });
+
   it("does not resend an unchanged large snapshot on every socket drain", async () => {
     await writer.append("agent.spawned", {
       agent_id: "context-agent",
