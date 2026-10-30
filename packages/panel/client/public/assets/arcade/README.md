@@ -14,3 +14,5 @@ Original AI-generated raster artwork created for Clockwork from the selected Mis
 Characters are transparent PNGs. React chooses the character and recorded state; CSS supplies restrained state animations and respects reduced motion. These are not rigged 3D models or desktop overlay processes. Portrait species are decorative and never replace real agent role labels.
 
 Project artwork is distributed with the repository under its MIT license. Runtime UI icons remain Lucide icons under their own license.
+
+- `piko-front-sheet.png`: original front-view Piko animation atlas, 4 columns by 5 rows (1122 by 1402 pixels). Rows: idle, walk, work, attention, success. See PIKO_FRONT_SHEET.md for provenance and inspection limits.

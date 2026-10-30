@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
-contextBridge.exposeInMainWorld("clockworkDesktop", Object.freeze({ isDesktop: true }));
+contextBridge.exposeInMainWorld("clockworkDesktop", Object.freeze({ isDesktop: true, onDragging(callback) {
+  if (typeof callback !== "function") return () => {};
+  const listener = (_event, value) => { if (typeof value === "boolean") callback(value); };
+  ipcRenderer.on("companion:drag-state", listener);
+  return () => ipcRenderer.removeListener("companion:drag-state", listener);
+} }));
 const interactive = ".cw-desktop-drag-surface,.cw-pet-play,.cw-pet-bubble,.cw-pet-settings,.cw-pet-panel";
 window.addEventListener("DOMContentLoaded", () => {
   let queued = false;

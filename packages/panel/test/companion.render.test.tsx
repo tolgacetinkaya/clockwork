@@ -7,11 +7,11 @@ import { petVariants, companionMessages } from "../client/companion-state.js";
 describe("companion interface", () => {
     it("renders Piko in a document-flow dock with keyboard controls and no unsolicited announcement", () => {
         const html = renderToStaticMarkup(createElement(Companion));
-        expect(html).toContain('/assets/arcade/puffin.png');
+        expect(html).toContain('cw-piko-sprite');
         expect(html).toContain('Piko');
         expect(html).toContain('aria-expanded="false"');
         expect(html).toContain('aria-live="polite"></span>');
-        expect(html).toContain('<img');
+        expect(html).toContain('data-pose="idle"');
         expect(html).toContain('class="cw-pet-play"');
         expect(html).toContain('aria-label="Piko');
     });

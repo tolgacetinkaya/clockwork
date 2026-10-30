@@ -112,6 +112,7 @@ function validPointer(point) { return point && [point.x, point.y].every(value =>
 ipcMain.on("companion:drag-start", (event, point) => {
   if (!trusted(event) || !validPointer(point)) return;
   dragStart = { cursor: { x: point.x, y: point.y }, bounds: win.getBounds() };
+  win.webContents.send("companion:drag-state", true);
   win.setIgnoreMouseEvents(false);
 });
 ipcMain.on("companion:drag-move", (event, point) => {
@@ -120,7 +121,7 @@ ipcMain.on("companion:drag-move", (event, point) => {
 });
 ipcMain.on("companion:drag-end", event => {
   if (!trusted(event)) return;
-  dragStart = null; saveBounds();
+  dragStart = null; win.webContents.send("companion:drag-state", false); saveBounds();
 });
 ipcMain.on("companion:menu", event => { if (trusted(event)) menu().popup({ window: win }); });
 app.on("before-quit", () => { clearTimeout(saveTimer); clearTimeout(retryTimer); clearInterval(hitTimer); saveBounds(); tray?.destroy(); });

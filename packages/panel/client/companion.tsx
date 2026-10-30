@@ -13,6 +13,7 @@ import {
 } from "./companion-state.js";
 import { AnimatePresence, motion } from "motion/react";
 import { useMotionEnabled } from "./animations.js";
+import { PikoSprite } from "./piko-sprite.js";
 import { petMotion, type PetReaction } from "./pet-motion.js";
 import "./companion.css";
 
@@ -35,6 +36,8 @@ export function Companion({ snapshot }: { snapshot?: PanelSnapshot }) {
   const motionEnabled = useMotionEnabled();
   const [reaction, setReaction] = useState<PetReaction>(null);
   const [playCount, setPlayCount] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => window.clockworkDesktop?.onDragging?.(setDragging), []);
   useEffect(() => {
     if (!reaction) return;
     const timer = setTimeout(() => setReaction(null), 1000);
@@ -117,8 +120,10 @@ export function Companion({ snapshot }: { snapshot?: PanelSnapshot }) {
           <motion.button type="button" className="cw-pet-play" aria-label={t(variant.name)}
             onClick={() => { setPlayCount(count => count + 1); setReaction("play"); }}
             whileHover={!motionEnabled ? undefined : { scale: 1.035 }} whileTap={!motionEnabled ? undefined : { scale: .96 }}>
-            <motion.img key={`${variant.id}-${playCount}`} className="cw-pet-character" src={variant.image} alt="" width="180" height="180"
-              animate={petMotion(state.kind, motionEnabled, reaction)} draggable={false} />
+            {variant.id === "puffin" ? <PikoSprite key={playCount} kind={state.kind} enabled={motionEnabled} reaction={reaction} dragging={dragging} /> :
+              <motion.img key={`${variant.id}-${playCount}`} className="cw-pet-character" src={variant.image} alt="" width="180" height="180"
+                animate={petMotion(state.kind, motionEnabled, reaction)} draggable={false} />}
+
           </motion.button>
           <AnimatePresence>
             {reaction === "play" && motionEnabled && [0, 1, 2].map(index => (
