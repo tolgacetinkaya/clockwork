@@ -10,6 +10,7 @@ import { activeTeam, teamSummary, unitActivity } from "./team-summary.js";
 import { crewContributions, crewRole, crewRunFlag, finalReviewOutcome } from "./crew.js";
 import { concise, crewPortrait } from "./quest-model.js";
 import "./quest.css";
+import { ExecutionHealth } from "./execution-health.js";
 import { PageHeading } from "./work.js";
 
 export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
@@ -32,6 +33,7 @@ export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
       <span><strong>{summary.verifiers}</strong>{" "}{t("Active verifiers")}</span>
       <span><strong>{summary.waiting}</strong>{" "}{t("Units waiting on dependencies")}</span>
     </div>
+    <ExecutionHealth snapshot={snapshot} connection={connection} />
     <section className="crew-section" aria-label={t("Crew roles and contributions")}>
       <h2>{t("The crew, at a glance")}</h2>
       <p className="small-muted">{t("Badges count unique accepted tasks with producer and independent verifier evidence in the latest {count} recorded events. They do not imply integration or combined verification passed.", { count: snapshot.events.length })}</p>
@@ -60,7 +62,7 @@ export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
         </div></section>)}
       </div> : <Empty title={t("The team takes shape with the work")}>{t("Agent events and assignments will appear when an orchestrator starts a run.")}</Empty>}
     </section>
-    {agents.length ? <details className="surface crew-technical"><summary>{t("Agent details")}</summary><div className="agent-grid">
+    {agents.length ? <details className="surface crew-technical"><summary>{t("Agent details")}</summary><p className="small-muted">{t("Provider and model IDs show recorded launch requests, not provider-attested model identity.")}</p><div className="agent-grid">
       {agents.map((agent) => <article className="agent-card" key={agent.id}><h2>{t(crewRole(snapshot, agent))}</h2><code>{agent.id}</code><p>{agent.purpose ?? t("Assigned specialist")}</p><div className="agent-facts"><div><span>{t("Model tier")}</span><strong>{agent.modelTier ? t(title(agent.modelTier)) : t("Not recorded")}</strong></div><div><span>{t("Assigned units")}</span><strong>{agent.units.length}</strong></div></div><p>{[agent.provider, agent.model].filter(Boolean).join(" / ") || t("Provider / model not recorded")}</p><footer>{t("Last recorded activity")}{" "}<span>{agent.lastEventAt ? time(agent.lastEventAt) : "—"}</span></footer></article>)}
     </div></details> : null}
   </>;

@@ -209,3 +209,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 599px) {
   .crew-recorded .crew-cards { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Keep the seven workflow destinations reachable on short and narrow screens. */
+.sidebar nav{gap:7px}.nav-item{min-height:64px}
+@media(max-width:520px){.nav-item{min-width:44px;min-height:59px}}

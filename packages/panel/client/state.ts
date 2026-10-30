@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "overview" | "mission" | "workboard" | "team" | "activity" | "decisions";
+export type View = "start" | "overview" | "mission" | "workboard" | "team" | "activity" | "decisions";
 export type Filter = "all" | "active" | "waiting" | "accepted" | "attention";
 export type Connection = "connecting" | "live" | "reconnecting" | "stale";
 interface UIState {
@@ -27,7 +27,7 @@ interface UIState {
 }
 /** UI state only. Domain state belongs exclusively to the Query snapshot cache. */
 export const usePanelUI = create<UIState>((set) => ({
-  view: "overview",
+  view: "start",
   search: "",
   filter: "all",
   selectedUnit: null,

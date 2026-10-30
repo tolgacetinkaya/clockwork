@@ -1,6 +1,7 @@
 import { t, useI18n, locales, localeNames } from "./i18n.js";
 import {
   LayoutDashboard,
+  BookOpen,
   Columns3,
   Users,
   Activity,
@@ -20,6 +21,7 @@ import type { PanelSnapshot, ControlState } from "../src/protocol.js";
 import { usePanelUI } from "./state.js";
 import { Mark } from "./ui.js";
 const navigation = [
+  { id: "start", label: "Getting started", Icon: BookOpen },
   { id: "overview", label: "Overview", Icon: LayoutDashboard },
   { id: "mission", label: "Mission control", Icon: Play },
   { id: "workboard", label: "Workboard", Icon: Columns3 },
@@ -68,9 +70,9 @@ export function Layout({
           className="brand"
           onClick={(event) => {
             event.preventDefault();
-            setView("overview");
+            setView("start");
           }}
-          aria-label={t("Clockwork overview")}
+          aria-label={t("Getting started")}
         >
           <Mark />
           <span>
@@ -208,7 +210,7 @@ export function Layout({
                 {snapshot?.state.runId ?? t("Waiting for a run")}
               </span>
             </span>
-            <div className="run-actions">
+            {snapshot?.mode !== "recorded-demo" ? <div className="run-actions">
               {requested ? (
                 <span className="requested-state">{requested}</span>
               ) : null}
@@ -249,7 +251,7 @@ export function Layout({
                 <Plus size={14} />
                 {t("Add note")}
               </button>
-            </div>
+            </div> : null}
           </div>
           {children}
           <footer className="workspace-footer">

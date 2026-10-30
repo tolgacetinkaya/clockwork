@@ -52,6 +52,26 @@ describe("mission control HTTP", () => {
     expect((await post("start", { approvalToken: approved.approvalToken })).status).toBe(409);
     expect(execution.run).not.toHaveBeenCalled();
   });
+  it("binds role choices to the saved revision, preserves them after restart, and invalidates approval on model-only edits", async () => {
+    const models = { producer_model: "fixture-producer", verifier_model: "fixture-verifier", integration_verifier_model: "fixture-final" };
+    let current = (await (await post("draft", { spec: { ...spec(), execution: models } })).json()) as LaunchState;
+    expect(current.draft!.spec.execution).toEqual(models);
+    await panel.close(); panel = await startPanel({ projectDir: project, execution });
+    expect(((await (await fetch(`${panel.url}/api/launch`)).json()) as LaunchState).draft!.spec.execution).toEqual(models);
+    for (const role of ["producer_model", "verifier_model", "integration_verifier_model"] as const) {
+      const approved = (await (await post("approve", { revision: current.draft!.revision })).json()) as LaunchState;
+      const edited = structuredClone(current.draft!.spec);
+      edited.execution![role] = `changed-${role}`;
+      const response = await post("draft", { spec: edited });
+      expect(response.status).toBe(200);
+      current = (await response.json()) as LaunchState;
+      expect(current.draft!.revision).not.toBe(approved.draft!.revision);
+      expect(current.approvalToken).toBeUndefined();
+      expect((await post("approve", { revision: approved.draft!.revision })).status).toBe(409);
+      expect((await post("start", { approvalToken: approved.approvalToken })).status).toBe(409);
+    }
+    expect(execution.run).not.toHaveBeenCalled();
+  });
   it("rejects invalid plans, missing global gates, unsafe concurrency and dirty sources", async () => {
     const invalid = spec(); invalid.verification.global_gates = [];
     expect((await post("draft", { spec: invalid })).status).toBe(409);
