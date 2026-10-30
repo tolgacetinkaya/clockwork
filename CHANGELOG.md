@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added panel production/verification stage tracking and dependency waiting reasons.
+- Added `codex team` foreground scheduling (default 2, maximum 8 concurrent units), isolated integration worktrees, dependency integration, budget reservations and durable stop/recovery records.
+
 - Added experimental local Codex producer/verifier execution in linked worktrees, shared execution contracts, live agent activity and token accounting.
 - Added receipt-based delivery checks, pause/stop interruption, failure/usage reconciliation, independent read-only verification and Codex orchestration instructions.
 - Retained the Claude plugin and its hook; Codex ownership checks are delivery gates, not a replacement PreToolUse hook.

@@ -2315,3 +2315,18 @@ textarea::placeholder {
     height: 110px;
   }
 }
+
+.team-summary { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0 0 24px; color: #737c70; }
+.team-summary strong { color: #26382d; margin-right: 6px; font-variant-numeric: tabular-nums; }
+
+.unit-activity { display: grid; gap: 5px; margin-top: 10px; color: #737c70; font-size: 11px; line-height: 1.5; }
+.unit-activity strong { color: #52664f; font-weight: 500; }
+.concurrent-work { margin-bottom: 28px; padding: 22px; border: 1px solid #e0e5d9; border-radius: 14px; background: #fafbf7; }
+.concurrent-work h2 { margin: 0 0 7px; font-family: var(--font-editorial); font-size: 25px; font-weight: 400; }
+.concurrent-unit { padding: 16px 0; border-top: 1px solid #e3e6de; display: grid; gap: 9px; }
+.concurrent-unit > span { color: #52664f; font-size: 12px; }
+.concurrent-actor { display: flex; flex-wrap: wrap; gap: 8px 18px; color: #737c70; font-size: 11px; }
+.concurrent-actor strong { color: #26382d; font-weight: 500; }
+
+.checkpoint-failures { margin: 12px 0; padding-left: 18px; line-height: 1.6; overflow-wrap: anywhere; }
+.checkpoint-card code { overflow-wrap: anywhere; }

@@ -16,6 +16,8 @@ export interface PanelAgent {
   id: string;
   purpose: string | null;
   modelTier: string | null;
+  provider?: string | null;
+  model?: string | null;
   status: "working" | "verifying" | "attention" | "idle" | "completed";
   units: string[];
   lastEventAt: string | null;

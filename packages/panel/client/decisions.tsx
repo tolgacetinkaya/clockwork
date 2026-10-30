@@ -3,6 +3,7 @@ import type { PanelCommand, PanelSnapshot } from "../src/protocol.js";
 import { usePanelUI } from "./state.js";
 import { title, time } from "./format.js";
 import { Empty, SectionHeading } from "./ui.js";
+import { checkpointDetails } from "./checkpoint-details.js";
 import { PageHeading } from "./work.js";
 
 export function Decisions({
@@ -77,6 +78,7 @@ export function Decisions({
             </section>
           ) : null}
           {snapshot.state.openCheckpoints.map((checkpoint) => {
+            const details = checkpointDetails(snapshot.events, checkpoint.ref);
             const queued = snapshot.queue.queued.some(
               (command) =>
                 command.type === "resolve_checkpoint" &&
@@ -88,12 +90,16 @@ export function Decisions({
                   <span className="eyebrow">
                     {checkpoint.blocking ? "BLOCKING CHECKPOINT" : "MILESTONE"}
                   </span>
-                  <h2>{title(checkpoint.ref)}</h2>
+                  <h2>{checkpoint.ref.startsWith("team-") ? "Team recovery required" : title(checkpoint.ref)}</h2>
                   <p>
-                    {checkpoint.blocking
+                    {details.message ?? (checkpoint.blocking
                       ? "This gate needs a resolution before dependent work can continue."
-                      : "Review this milestone with the orchestrator."}
+                      : "Review this milestone with the orchestrator.")}
                   </p>
+                  {details.failures.length ? <ul className="checkpoint-failures">
+                    {details.failures.map(([unit, reason]) => <li key={unit}><strong>{unit}</strong>: {reason}</li>)}
+                  </ul> : null}
+                  {details.workspace ? <p>Preserved integration workspace <code>{details.workspace}</code></p> : null}
                 </div>
                 <button
                   className="secondary-button"

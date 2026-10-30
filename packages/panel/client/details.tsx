@@ -3,6 +3,7 @@ import type { PanelSnapshot } from "../src/protocol.js";
 import { title, number, unitTitle } from "./format.js";
 import { Dialog, Status } from "./ui.js";
 import { usePanelUI } from "./state.js";
+import { UnitActivity } from "./unit-activity.js";
 import { ActivityList } from "./activity.js";
 
 export function UnitDetails({
@@ -30,6 +31,7 @@ export function UnitDetails({
         <Status value={unit.status} />
         <span>{unit.agent ? title(unit.agent) : "Unassigned"}</span>
       </div>
+      <UnitActivity snapshot={snapshot} id={id} />
       {definition ? (
         <p className="drawer-intro">{definition.description}</p>
       ) : null}
@@ -57,6 +59,7 @@ export function UnitDetails({
               onClick={() => selectUnit(dependency)}
             >
               {unitTitle(snapshot, dependency)}
+              <Status value={snapshot.state.units[dependency]?.status ?? "unknown"} />
               <ChevronRight size={14} />
             </button>
           ))
