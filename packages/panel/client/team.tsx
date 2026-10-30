@@ -3,9 +3,11 @@ import { ArrowUpRight } from "lucide-react";
 import type { PanelSnapshot } from "../src/protocol.js";
 import { title, time, unitTitle } from "./format.js";
 import { usePanelUI } from "./state.js";
-import { Avatar, Empty, Status } from "./ui.js";
+import { Empty, Status } from "./ui.js";
 import { activeTeam, teamSummary, unitActivity } from "./team-summary.js";
 import { crewContributions, crewRole, crewRunFlag, finalReviewOutcome } from "./crew.js";
+import { concise, crewPortrait } from "./quest-model.js";
+import "./quest.css";
 import { PageHeading } from "./work.js";
 
 export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
@@ -30,15 +32,15 @@ export function Team({ snapshot }: { snapshot: PanelSnapshot }) {
       <p className="small-muted">{t("Badges count unique accepted tasks with producer and independent verifier evidence in the latest {count} recorded events. They do not imply integration or combined verification passed.", { count: snapshot.events.length })}</p>
       {agents.length ? <div className={`crew-lanes ${flag ? "crew-recorded" : ""}`}>
         {lanes.map((lane) => <section className="crew-lane" key={lane}><h3>{t(lane)}</h3>
-          {agents.filter((agent) => laneOf(agent) === lane).map((agent, index) => {
+          {agents.filter((agent) => laneOf(agent) === lane).map((agent) => {
             const evidence = contributions.get(agent.id);
             const role = crewRole(snapshot, agent);
             const missions = agent.units.filter((id) => unitActivity(snapshot, id)?.actors.some((actor) => actor.id === agent.id));
             const shownUnits = missions.length ? missions : agent.units;
             const reviewOutcome = role === "Final review" ? finalReviewOutcome(snapshot, agent.id) : null;
             return <article className="crew-member" key={agent.id}>
-              <header className="crew-member-header"><Avatar name={t(role)} index={index} small /><span className="crew-role">{t(role)}</span>{flag ? <span className="small-muted">{flag}</span> : <Status value={agent.status} />}</header>
-              {role === "Final review" ? <h4>{t("Whole-project review")}</h4> : shownUnits.length ? shownUnits.map((id) => <button className="crew-mission" key={id} onClick={() => select(id)}><span className="crew-mission-description">{snapshot.spec?.units.find((unit) => unit.id === id)?.description ?? unitTitle(snapshot, id)}</span><small>{id}</small><ArrowUpRight size={12} /></button>) : <p>{agent.purpose ?? t("Awaiting a recorded task")}</p>}
+              <header className="crew-member-header"><img className="crew-portrait" src={crewPortrait(snapshot, agent)} alt="" /><span className="crew-role">{t(role)}</span>{flag ? <span className="small-muted">{flag}</span> : <Status value={agent.status} />}</header>
+              {role === "Final review" ? <h4>{t("Whole-project review")}</h4> : shownUnits.length ? shownUnits.map((id) => <button className="crew-mission" key={id} onClick={() => select(id)}><span className="crew-mission-description"><strong>{unitTitle(snapshot, id)}</strong><span>{concise(snapshot.spec?.units.find((unit) => unit.id === id)?.description ?? unitTitle(snapshot, id), 140)}</span></span><small>{id}</small><ArrowUpRight size={12} /></button>) : <p>{agent.purpose ?? t("Awaiting a recorded task")}</p>}
               {reviewOutcome ? <p className="crew-review-outcome">{reviewOutcome}</p> : null}
               {missions.map((id) => <p className="small-muted" key={id}>{unitActivity(snapshot, id)?.readiness}</p>)}
               {role === "Final review" ? <p className="small-muted">{t("Independent acceptance checks over the combined integration workspace.")}</p> : null}

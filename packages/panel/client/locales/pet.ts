@@ -236,3 +236,16 @@ for (const locale of Object.keys(requestMessages) as (keyof typeof requestMessag
   petMessages[locale]["Stop requested · activity may continue"] = requestMessages[locale][0]!;
   petMessages[locale]["Pause requested · activity may continue"] = requestMessages[locale][1]!;
 }
+
+const animalMessages = {
+  tr: ["Kara · Baykuş", "Moss · Kaplumbağa", "Nova · Tilki", "Piko · Deniz papağanı"],
+  es: ["Kara · Búho", "Moss · Tortuga", "Nova · Zorro", "Piko · Frailecillo"],
+  de: ["Kara · Eule", "Moss · Schildkröte", "Nova · Fuchs", "Piko · Papageitaucher"],
+  fr: ["Kara · Hibou", "Moss · Tortue", "Nova · Renard", "Piko · Macareux"],
+  pt: ["Kara · Coruja", "Moss · Tartaruga", "Nova · Raposa", "Piko · Papagaio-do-mar"],
+};
+for (const locale of Object.keys(animalMessages) as (keyof typeof animalMessages)[]) {
+  ["Kara · Owl", "Moss · Turtle", "Nova · Fox", "Piko · Puffin"].forEach((key, index) => {
+    petMessages[locale][key] = animalMessages[locale][index]!;
+  });
+}

@@ -138,8 +138,9 @@ export function App() {
             )}
           </>
         )}
+        {view !== "overview" || !snapshot ? <div className="secondary-companion"><Companion snapshot={snapshot} /></div> : null}
       </Layout>
-      <Companion snapshot={snapshot} />
+
       {notice ? (
         <div className="toast" role="status">
           <span>{notice}</span>

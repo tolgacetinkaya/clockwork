@@ -75,23 +75,12 @@ export function companionState(snapshot: PanelSnapshot | undefined, connection: 
         tasks
     };
 }
+// Stable legacy IDs preserve existing saved creature choices.
 export const petVariants = [
-    {
-        id: "brass",
-        name: "Brass moth",
-        color: "#e8b968",
-        shape: "moth"
-    }, {
-        id: "mint",
-        name: "Mint rover",
-        color: "#8bd1b1",
-        shape: "rover"
-    }, {
-        id: "violet",
-        name: "Violet scout",
-        color: "#bba3ee",
-        shape: "scout"
-    }
+    { id: "brass", name: "Kara · Owl", color: "#e8b968", image: "/assets/arcade/owl.png" },
+    { id: "mint", name: "Moss · Turtle", color: "#a7cc6c", image: "/assets/arcade/turtle.png" },
+    { id: "violet", name: "Nova · Fox", color: "#bba3ee", image: "/assets/arcade/fox.png" },
+    { id: "puffin", name: "Piko · Puffin", color: "#efb36f", image: "/assets/arcade/puffin.png" },
 ] as const;
 export type PetPreferences = {
     version: 1;
@@ -101,7 +90,7 @@ export type PetPreferences = {
 };
 export const defaultPetPreferences: PetPreferences = {
     version: 1,
-    variant: "brass",
+    variant: "puffin",
     hidden: false,
     muted: true
 };
@@ -113,7 +102,7 @@ export function readPetPreferences(storage?: {
         if (p?.version === 1)
             return {
                 version: 1,
-                variant: petVariants.some(v => v.id === p.variant) ? p.variant : "brass",
+                variant: petVariants.some(v => v.id === p.variant) ? p.variant : "puffin",
                 hidden: p.hidden === true,
                 muted: p.muted !== false
             };

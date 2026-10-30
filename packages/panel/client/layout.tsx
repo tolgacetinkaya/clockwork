@@ -61,7 +61,7 @@ export function Layout({
     snapshot?.control.kill ||
     snapshot?.state.paused;
   return (
-    <div className="app-shell">
+    <div className={`app-shell view-${view}`}>
       <aside className="sidebar">
         <a
           href="#"
@@ -101,7 +101,7 @@ export function Layout({
               className={`nav-item ${view === id ? "active" : ""}`}
               onClick={() => setView(id)}
             >
-              <Icon size={18} strokeWidth={1.7} />
+              <Icon size={22} strokeWidth={1.7} />
               <span>{t(label)}
             </span>
               {id === "decisions" && decisions ? (
@@ -113,23 +113,7 @@ export function Layout({
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <label className="language-selector">
-            <span>{t("Language")}
-            </span>
-            <select
-              value={locale}
-              onChange={(event) => {
-                const next = locales.find((item) => item === event.target.value);
-                if (next) setLocale(next);
-              }}
-            >
-              {locales.map((item) => (
-                <option key={item} value={item} lang={item === "pt" ? "pt-BR" : item}>
-                  {localeNames[item]}
-                </option>
-              ))}
-            </select>
-          </label>
+
           <div className="local-note">
             <span className="local-dot" />
             <div>
@@ -167,6 +151,24 @@ export function Layout({
             </strong>
           </div>
           <div className="topbar-actions">
+          <label className="language-selector">
+            <span>{t("Language")}
+            </span>
+            <select
+              aria-label={t("Language")}
+              value={locale}
+              onChange={(event) => {
+                const next = locales.find((item) => item === event.target.value);
+                if (next) setLocale(next);
+              }}
+            >
+              {locales.map((item) => (
+                <option key={item} value={item} lang={item === "pt" ? "pt-BR" : item}>
+                  {localeNames[item]}
+                </option>
+              ))}
+            </select>
+          </label>
             <span
               className={`connection connection-${connection}`}
               role="status"

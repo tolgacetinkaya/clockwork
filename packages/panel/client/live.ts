@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PanelSnapshot } from "../src/protocol.js";
 import { newerSnapshot, parseSnapshot, SNAPSHOT_KEY } from "./transport.js";
 import { usePanelUI } from "./state.js";
@@ -76,7 +76,7 @@ export function useSnapshot() {
   // cannot race a newer streamed snapshot into the shared query cache.
   return useQuery<PanelSnapshot>({
     queryKey: SNAPSHOT_KEY,
-    enabled: false,
+    queryFn: skipToken,
     staleTime: Infinity,
   });
 }
