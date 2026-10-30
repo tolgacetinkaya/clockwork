@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, posix } from "node:path";
+import { isAbsolute, join, relative, resolve, posix, sep } from "node:path";
 const exec = promisify(execFile);
 export async function git(cwd: string, ...args: string[]): Promise<string> {
   return (
@@ -22,7 +22,10 @@ export async function checkWorkspace(
     realpath(resolve(project, workspace)),
   ]);
   const rel = relative(worker, root);
-  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)))
+  if (
+    rel === "" ||
+    (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+  )
     throw new Error(
       "Worker must use a separate linked Git worktree outside the control directory",
     );

@@ -10,6 +10,8 @@ const fixtureFiles = new Set([
   'packages/core/test/audit.secrets.test.ts',
   'packages/core/test/audit.report.test.ts',
   'packages/core/test/ledger.store.test.ts',
+  'packages/core/test/commands.queue.test.ts',
+  'packages/panel/test/panel.commands.test.ts',
 ]);
 const fakeToken = /^(?:sk-(?:[abzy]{24}|[12]{22}|abcdefghijklmnopqrstuvwx|abcdefghijklmnop1234)|ghp_abcdefghijklmnopqrs[t]1234|AKIAIOSFODNN7E[X]AMPLE)$/;
 const findings = [];

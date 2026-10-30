@@ -11,6 +11,8 @@ import {
   readCursor,
 } from "../src/commands/queue.js";
 
+import { Redactor } from "../src/ledger/redact.js";
+
 describe("command queue", () => {
   let dir: string;
   const clock = () => new Date("2026-07-17T12:00:00.000Z");
@@ -91,6 +93,52 @@ describe("command queue", () => {
     await appendFile(join(dir, ".teamsmith", "commands.jsonl"), "{");
     await expect(appendCommand(dir, "note", { text: "b" })).rejects.toThrow(/corrupted/);
     await expect(acknowledgeCommands(dir, 1)).rejects.toThrow(/corrupted/i);
+  });
+
+  it("rejects detected secrets in answers, notes, refs, nested values and keys before persistence", async () => {
+    await appendCommand(dir, "note", { text: "safe first" }, { clock });
+    const file = join(dir, ".teamsmith", "commands.jsonl");
+    const before = await readFile(file, "utf8");
+    const secret = "sk-abcdefghijklmnop1234";
+    const cases: [string, Record<string, unknown>][] = [
+      ["answer_questions", { text: `use ${secret}` }],
+      ["note", { text: secret }],
+      ["resolve_checkpoint", { ref: "gate-1", note: secret }],
+      ["resolve_checkpoint", { ref: secret }],
+      ["note", { text: "safe", nested: [{ [secret]: "value" }] }],
+      ["note", { text: "safe", nested: { values: [secret] } }],
+      ["note", { text: "safe", toJSON: () => ({ text: secret }) }],
+    ];
+    for (const [type, data] of cases) {
+      await expect(appendCommand(dir, type, data)).rejects.toThrow("containing detected secrets");
+      expect(await readFile(file, "utf8")).toBe(before);
+    }
+    await acknowledgeCommands(dir, 1);
+    expect(await readFile(file, "utf8")).toBe(before);
+    const next = await appendCommand(dir, "note", { text: "safe next" });
+    expect(next.seq).toBe(2);
+    expect(JSON.stringify(await consumeCommands(dir))).not.toContain(secret);
+  });
+
+  it("rejects registered literals with a generic error that contains no secret", async () => {
+    const redactor = new Redactor();
+    const secret = "private-password-42";
+    redactor.registerSecret(secret);
+    const error = await appendCommand(dir, "note", { text: secret }, { redactor }).catch(err => err);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("Refusing to append command containing detected secrets");
+    expect((await readCommands(dir)).commands).toEqual([]);
+    await expect(readFile(join(dir, ".teamsmith", "commands.jsonl"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves ordinary command content and returns the persisted snapshot", async () => {
+    const data = { ref: "gate-1", note: "approved", nested: { answer: ["keep exactly", 42] } };
+    const command = await appendCommand(dir, "resolve_checkpoint", data, { clock });
+    data.note = "later caller mutation";
+    expect(command.data.note).toBe("approved");
+    expect((await readCommands(dir)).commands).toEqual([command]);
+    const answer = await appendCommand(dir, "answer_questions", { text: "Use SQLite locally" });
+    expect(answer.data).toEqual({ text: "Use SQLite locally" });
   });
 
   describe("cursor semantics", () => {
