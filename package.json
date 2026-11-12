@@ -18,9 +18,9 @@
     "pet:desktop": "npm run start --workspace @clockwork/desktop"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
+    "@types/node": "^24.0.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
+    "typescript": "^5.6.0",
     "vitest": "^5.1.0"
   },
   "license": "MIT",
