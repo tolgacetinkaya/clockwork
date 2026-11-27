@@ -1,11 +1,19 @@
-import { t, useI18n } from "./i18n.js";
+import { getLocale, intlLocale, t, useI18n } from "./i18n.js";
 import { ChevronRight } from "lucide-react";
-import type { PanelSnapshot } from "../src/protocol.js";
+import type { PanelExecution, PanelSnapshot } from "../src/protocol.js";
 import { title, number, unitTitle } from "./format.js";
 import { Dialog, Status } from "./ui.js";
 import { usePanelUI } from "./state.js";
 import { UnitActivity } from "./unit-activity.js";
 import { ActivityList } from "./activity.js";
+
+function executionMode(mode: PanelExecution["mode"]) {
+  switch (mode) {
+    case "produce": return t("Production");
+    case "verify": return t("Independent verification");
+    case "integration_verify": return t("Integration verification");
+  }
+}
 
 export function UnitDetails({
   id,
@@ -26,6 +34,9 @@ export function UnitDetails({
         <p>{t("This work unit is not present in the current snapshot.")}</p>
       </Dialog>
     );
+  const receipts = Object.values(snapshot.state.executions ?? {})
+    .filter((execution) => execution.unitId === id && execution.appliedProfile)
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   const events = snapshot.events.filter((event) => event.unit_id === id);
   return (
     <Dialog eyebrow={id} title={unitTitle(snapshot, id)} onClose={close} wide>
@@ -90,6 +101,25 @@ export function UnitDetails({
             ))}
           </div>
         </section>
+      ) : null}
+      {receipts.length ? (
+        <details className="detail-section">
+          <summary>{t("Applied project rules")}</summary>
+          <ul className="acceptance-list">
+            {receipts.map(({ execution, mode, startedAt, appliedProfile }) => appliedProfile && (
+              <li key={execution}>
+                <strong>{executionMode(mode)}</strong>{" · "}
+                <time dateTime={startedAt}>{new Date(startedAt).toLocaleString(intlLocale[getLocale()])}</time>
+                <p>{t("Profile version {version}", { version: appliedProfile.version })}</p>
+                {appliedProfile.ruleIds.length ? (
+                  <div className="scope-tags">
+                    {appliedProfile.ruleIds.map((ruleId) => <code key={ruleId}>{ruleId}</code>)}
+                  </div>
+                ) : <p className="small-muted">{t("No project rules")}</p>}
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
       <section className="detail-section">
         <h3>{t("Recorded activity")}</h3>

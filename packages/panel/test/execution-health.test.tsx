@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildBudgetReport, LedgerWriter, reduceLedger } from "@clockwork/core";
 import type { PanelExecution, PanelSnapshot } from "../src/protocol.js";
 import { readPanelData } from "../src/snapshot.js";
+import { UnitDetails } from "../client/details.js";
 import { ExecutionHealth } from "../client/execution-health.js";
 import { locales, setLocale, translate } from "../client/i18n.js";
 import { watchdogMessages } from "../client/locales/watchdog.js";
@@ -30,6 +31,31 @@ function render(value: PanelSnapshot, connection: Connection = "live") {
 }
 beforeEach(() => setLocale("en"));
 afterEach(() => setLocale("en"));
+
+describe("applied project rules", () => {
+  it("shows only the selected unit's recorded rule IDs and keeps legacy receipts unknown", () => {
+    const appliedProfile = { version: 1, digest: "a".repeat(64), ruleIds: ["review-api"] };
+    const value = snapshot(execution({ appliedProfile }));
+    value.state.units.task = { status: "running", dependsOn: [], reworkAttempts: 0, estimated: 0, spent: 0 };
+    value.state.executions!.other = execution({
+      execution: "other",
+      unitId: "other-task",
+      appliedProfile: { ...appliedProfile, ruleIds: ["other-rule"] },
+    });
+    const renderDetails = () => renderToStaticMarkup(createElement(UnitDetails, {
+      id: "task", snapshot: value, close: () => {},
+    }));
+    const html = renderDetails();
+    expect(html).toContain("Applied project rules");
+    expect(html).toContain("Profile version 1");
+    expect(html).toContain("review-api");
+    expect(html).not.toContain("other-rule");
+    expect(html).not.toContain(appliedProfile.digest);
+
+    delete value.state.executions![executionId]!.appliedProfile;
+    expect(renderDetails()).not.toContain("Applied project rules");
+  });
+});
 
 describe("recorded execution monitoring", () => {
   it("keeps historical runs untracked without inventing healthy executions", () => {

@@ -94,6 +94,17 @@ export function Mission({ snapshot, disabled }: { snapshot: PanelSnapshot; disab
       <aside className="mission-aside">
         <section className="surface mission-form"><h2 className="mission-section-title">{t("5. Review and launch")}</h2><p className="mission-primary-help">{t("Saving does not run agents. Review the plan, approve it, then start explicitly.")}</p>{existingExecution ? <p className="notice-banner">{t("This workspace already has an executed mission. Inspect Recovery below for stopped work; use a fresh workspace for a new mission.")}</p> : null}<p>{t("{count} tasks · {concurrency} concurrent units · {budget} token budget", { count: tasks.length, concurrency, budget: number(budget) })}</p>
           <dl className="mission-model-review"><dt>{t("Producer model (optional)")}</dt><dd>{spec.execution?.producer_model ?? t("Host / CLI default")}</dd><dt>{t("Independent verifier model (optional)")}</dt><dd>{spec.execution?.verifier_model ?? t("Host / CLI default")}</dd><dt>{t("Final review model (optional)")}</dt><dd>{spec.execution?.integration_verifier_model ?? t("Follows resolved verifier")}</dd></dl>
+          {launch?.draft?.profile ? (
+            <details className="mission-notes" open>
+              <summary>{t("Project rules in the saved plan")}</summary>
+              <p>{t("Profile version {version}", { version: launch.draft.profile.version })}</p>
+              {launch.draft.profile.ruleIds.length ? (
+                <div className="scope-tags">
+                  {launch.draft.profile.ruleIds.map((ruleId) => <code key={ruleId}>{ruleId}</code>)}
+                </div>
+              ) : <p className="small-muted">{t("No project rules")}</p>}
+            </details>
+          ) : null}
           <details className="mission-notes"><summary>{t("Execution details")}</summary><p className="small-muted">{t("Launch uses the committed HEAD. Commit intended source changes and leave the source worktree clean before starting; the service rejects local changes.")}</p>
           <p className="small-muted">{t("Starting invokes the configured local provider and may consume its quota. No execution begins when saving or reviewing.")}</p></details>
           {lines(questions).length ? <p role="status" className="plan-issues">{t("Resolve all open questions before approval and start.")}</p> : null}
