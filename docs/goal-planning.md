@@ -100,3 +100,5 @@ Tests exercise real temporary Git worktrees, controlled local child processes,
 HTTP requests and panel interactions. They cover routing, bounded output,
 constraints, approval separation, stale revisions, cancellation and error paths.
 They do not establish paid-model availability or live planning quality.
+
+For reusable project rules and model destination permissions, see [Project profiles](project-profiles.md).
