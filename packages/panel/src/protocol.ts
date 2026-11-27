@@ -4,6 +4,7 @@ import type {
   ExecutionTracking,
   LedgerEvent,
   QueueStatus,
+  ProjectProfileReceipt,
   RunState,
 } from "@clockwork/core";
 import type { Spec, WorkUnit } from "../../core/src/spec/types.js";
@@ -31,7 +32,7 @@ export interface LaunchState {
   planSupported?: boolean;
   planning?: { requestId?: string; status: "running" | "completed" | "error"; summary?: string; usage?: { input: number; cached: number; output: number }; provider?: string; model?: string; draftRevision?: string; error?: string };
   disabledReason?: string;
-  draft?: { revision: string; spec: Spec };
+  draft?: { revision: string; spec: Spec; profile?: ProjectProfileReceipt };
   approvalToken?: string;
   status: "idle" | "running" | "completed" | "stopped" | "error";
   error?: string;

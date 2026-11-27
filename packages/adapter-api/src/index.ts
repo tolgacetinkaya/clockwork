@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { parseExecutionReport, executionReportSchema, parsePlanningProposal, planningProposalSchema } from "@clockwork/core";
-import type { ExecutionAdapter, ExecutionEvent, ExecutionRequest, PlanningAdapter, PlanningEvent, PlanningRequest } from "@clockwork/core";
+import { ProjectEgressBeforeDispatchError, assertApiEgress, parseExecutionReport, executionReportSchema, parsePlanningProposal, planningProposalSchema } from "@clockwork/core";
+import type { ExecutionAdapter, ExecutionEvent, ExecutionRequest, PlanningAdapter, PlanningEvent, PlanningRequest, ProjectEgressPolicy } from "@clockwork/core";
 import { type ApiConfig, record, modelRoute } from "./config.js";
 import { authorization, requestJson, parseUsage, type Message, type TokenUsage } from "./http.js";
 import { DockerSandbox, type ToolSandbox } from "./sandbox.js";
@@ -30,6 +30,9 @@ export class ApiAdapter implements ExecutionAdapter, PlanningAdapter {
     this.id = provider;
     this.sandbox = options.sandbox ?? new DockerSandbox(options.config.sandboxImage, options.config.dockerExecutable);
   }
+  assertProjectEgress(policy: ProjectEgressPolicy): void {
+    assertApiEgress(policy, this.provider, this.options.config.providers[this.provider]!.baseUrl);
+  }
   async *execute(request: ExecutionRequest): AsyncIterable<ExecutionEvent> {
     for await (const event of this.turns(request, false)) {
       if (event.type === "final") yield { type: "report", report: parseExecutionReport(event.text) };
@@ -54,6 +57,17 @@ export class ApiAdapter implements ExecutionAdapter, PlanningAdapter {
   private async *turns(request: ExecutionRequest, planning: boolean): AsyncIterable<Exclude<ExecutionEvent, { type: "report" }> | { type: "final"; text: string }> {
     if (!request.model) throw new Error("API providers require an explicit model ID");
     const cfg = this.options.config, provider = cfg.providers[this.provider]!;
+    let dispatched = false;
+    const checkEgress = async () => {
+      try {
+        await request.projectEgress?.assertCurrent();
+        if (request.projectEgress?.policy) this.assertProjectEgress(request.projectEgress.policy);
+      } catch (error) {
+        if (!dispatched) throw new ProjectEgressBeforeDispatchError(error);
+        throw error;
+      }
+    };
+    await checkEgress();
     const auth = authorization(provider, this.options.env ?? process.env);
     await this.sandbox.check(request.signal);
     const messages: Message[] = [
@@ -70,6 +84,9 @@ export class ApiAdapter implements ExecutionAdapter, PlanningAdapter {
         const body = JSON.stringify({ ...provider.options, model: request.model, messages, tools: [commandTool], stream: false, max_tokens: provider.maxOutputTokens });
         if (Buffer.byteLength(body) > cfg.maxInputBytes) throw new Error("API context exceeds the host byte limit; review and reduce the task context");
         yield { type: "activity", kind: "model_request", status: "started" };
+        await checkEgress();
+        request.signal.throwIfAborted();
+        dispatched = true;
         unknownUsage = true;
         const raw = await requestJson(`${provider.baseUrl}/chat/completions`, {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: auth }, body, signal: request.signal,
@@ -116,6 +133,8 @@ export class ApiAdapter implements ExecutionAdapter, PlanningAdapter {
           request.signal.throwIfAborted();
           seenCalls.add(call.id);
           yield { type: "activity", kind: "command_execution", status: "started" };
+          await request.projectEgress?.assertCurrent();
+          request.signal.throwIfAborted();
           const result = await this.sandbox.run(request.workspace, request.mode === "verify", call.command, request.signal);
           yield { type: "command", id: call.id, command: call.command, exitCode: result.exitCode, status: result.exitCode === 0 ? "completed" : "failed" };
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
@@ -138,6 +157,11 @@ export class ModelRouter implements ExecutionAdapter, PlanningAdapter {
     if (route.provider === "codex") return this.codex.id;
     if (!this.config || !Object.hasOwn(this.config.providers, route.provider)) throw new Error(`Provider ${route.provider} is not enabled; configure --providers-config on the host`);
     return route.provider;
+  }
+  assertProjectEgress(policy: ProjectEgressPolicy, model?: string): void {
+    const { adapter, model: selectedModel } = this.select(model);
+    if (!adapter.assertProjectEgress) throw new Error("This adapter cannot enforce the project data policy");
+    adapter.assertProjectEgress(policy, selectedModel);
   }
   private select(model?: string): { adapter: ExecutionAdapter & PlanningAdapter; model?: string } {
     const route = modelRoute(model);

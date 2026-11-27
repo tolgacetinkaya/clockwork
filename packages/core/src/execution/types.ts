@@ -1,3 +1,5 @@
+import type { ProjectEgress, ProjectEgressPolicy } from "./project-profile.js";
+
 /** Provider-neutral execution protocol. Adapters never mutate the project ledger. */
 export interface ExecutionReport {
   outcome: "completed" | "accepted" | "rework" | "blocked";
@@ -29,8 +31,10 @@ export interface ExecutionRequest {
   mode: "produce" | "verify";
   model?: string;
   signal: AbortSignal;
+  projectEgress?: ProjectEgress;
 }
 export interface ExecutionAdapter {
+  assertProjectEgress?(policy: ProjectEgressPolicy, model?: string): void;
   providerForModel?(model?: string): string;
   readonly id: string;
   execute(request: ExecutionRequest): AsyncIterable<ExecutionEvent>;

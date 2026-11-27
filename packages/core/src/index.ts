@@ -93,3 +93,6 @@ export type { PlanningReceipt } from "./execution/planning-receipt.js";
 export { executionReportSchema, parseExecutionReport } from "./execution/report.js";
 
 export { UnreconciledExecutionError } from "./execution/types.js";
+
+export { ProjectEgressBeforeDispatchError, assertApiEgress, isProjectProfileReceipt, loadProjectProfile, prepareProjectEgress, projectProfilePrompt, sameProjectProfile } from "./execution/project-profile.js";
+export type { ProjectEgress, ProjectEgressPolicy, ProjectProfile, ProjectProfileReceipt } from "./execution/project-profile.js";

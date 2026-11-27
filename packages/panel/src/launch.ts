@@ -4,12 +4,13 @@ const exec = promisify(execFile);
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { assertStorageFile, atomicWrite, LedgerWriter, loadLatestSpec, parseBudget, readLedger, reduceLedger, validatePlanningInput, validatePlanningReceipt, validateSpec, withStorageLock, writeSpecFile } from "@clockwork/core";
-import type { ExecutionReport, GoalPlan, GoalPlanningInput, Spec } from "@clockwork/core";
+import { loadProjectProfile, isProjectProfileReceipt, sameProjectProfile, assertStorageFile, atomicWrite, LedgerWriter, loadLatestSpec, parseBudget, readLedger, reduceLedger, validatePlanningInput, validatePlanningReceipt, validateSpec, withStorageLock, writeSpecFile } from "@clockwork/core";
+import type { ExecutionReport, GoalPlan, GoalPlanningInput, ProjectProfileReceipt, Spec } from "@clockwork/core";
 import type { LaunchState } from "./protocol.js";
 
 export interface PanelExecution {
-  plan?: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => Promise<GoalPlan & { usage: { input: number; cached: number; output: number }; provider: string; model?: string; head: string }>;
+  assertAdmission?: (project: string, spec: Spec, profile?: ProjectProfileReceipt) => Promise<void>;
+  plan?: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => Promise<GoalPlan & { usage: { input: number; cached: number; output: number }; provider: string; model?: string; head: string; profile?: ProjectProfileReceipt }>;
   run: (options: { project: string; concurrency: number; signal: AbortSignal }) => Promise<NonNullable<LaunchState["result"]>>;
   inspect: (project: string) => Promise<NonNullable<LaunchState["recovery"]> & { receipt?: unknown }>;
   resume: (options: { project: string; concurrency: number; signal: AbortSignal; recoveryToken: string }) => Promise<NonNullable<LaunchState["result"]>>;
@@ -32,6 +33,9 @@ function safeGate(value: unknown): NonNullable<LaunchState["result"]>["integrati
   return { status: gate.status as "passed" | "failed" | "not_configured", ...(typeof gate.reason === "string" ? { reason: gate.reason } : {}), ...(safeReport ? { report: safeReport } : {}) };
 }
 const hash = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
+function draftRevision(spec: Spec, profile?: ProjectProfileReceipt): string {
+  return hash(profile ? [spec, profile] : spec);
+}
 async function optional(path: string): Promise<string | null> {
   try { return await readFile(path, "utf8"); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; }
 }
@@ -51,7 +55,8 @@ export class LaunchService {
   private async fingerprint(): Promise<string> {
     const latest = await loadLatestSpec(join(this.project, ".teamsmith"));
     const head = (await exec("git", ["-C", this.project, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim();
-    return hash([head, await optional(join(this.project, ".teamsmith/ledger.jsonl")), latest?.doc ?? null, await optional(join(this.project, ".teamsmith/control.json")), await optional(join(this.project, ".teamsmith/team.json"))]);
+    const profile = (await loadProjectProfile(this.project))?.receipt;
+    return hash([head, ...(profile ? [profile] : []), await optional(join(this.project, ".teamsmith/ledger.jsonl")), latest?.doc ?? null, await optional(join(this.project, ".teamsmith/control.json")), await optional(join(this.project, ".teamsmith/team.json"))]);
   }
   private async save(): Promise<void> {
     await atomicWrite(join(this.project, ".teamsmith/launch.json"), JSON.stringify({ ...this.state, binding: this.binding, plannedHead: this.plannedHead, planningBlocked: this.planningBlocked, requiresRecovery: this.requiresRecovery }));
@@ -64,7 +69,9 @@ export class LaunchService {
     if (!raw) return;
     const saved = JSON.parse(raw) as LaunchState & { binding?: string; plannedHead?: string; planningBlocked?: boolean; requiresRecovery?: boolean };
     if (!["idle", "running", "completed", "stopped", "error"].includes(saved.status) || (saved.approvalToken !== undefined && typeof saved.approvalToken !== "string") || (saved.binding !== undefined && typeof saved.binding !== "string")) throw new Error("Invalid persisted launch state");
-    if (saved.draft && (!validateSpec(saved.draft.spec).spec || hash(saved.draft.spec) !== saved.draft.revision)) {
+    if (saved.draft && (!validateSpec(saved.draft.spec).spec ||
+      (saved.draft.profile !== undefined && !isProjectProfileReceipt(saved.draft.profile)) ||
+      draftRevision(saved.draft.spec, saved.draft.profile) !== saved.draft.revision)) {
       delete this.state.approvalToken;
       throw new Error("Invalid persisted draft; inspect the saved launch state before approving or executing");
     }
@@ -131,13 +138,17 @@ export class LaunchService {
         await this.beginPlanning(input, head, await this.fingerprint());
       } else if (action === "draft") {
         const spec = this.validDraft(body.spec);
-        this.state = { enabled: true, planSupported: !!this.execution!.plan, status: "idle", draft: { revision: hash(spec), spec: structuredClone(spec) } };
+        const profile = (await loadProjectProfile(this.project))?.receipt;
+        if (this.plannedHead && !sameProjectProfile(this.state.draft?.profile, profile)) throw new Error("Project profile changed since planning; generate a new plan");
+        this.state = { enabled: true, planSupported: !!this.execution!.plan, status: "idle", draft: { revision: draftRevision(spec, profile), spec: structuredClone(spec), ...(profile ? { profile } : {}) } };
         this.binding = undefined;
       } else if (action === "approve") {
         if (!this.state.draft || body.revision !== this.state.draft.revision) throw new Error("Draft revision is stale; review the current plan");
         if (this.state.approvalToken) throw new Error("Draft is already approved");
         this.assertResolved(this.state.draft.spec);
         if (this.plannedHead && this.plannedHead !== (await exec("git", ["-C", this.project, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim()) throw new Error("Project HEAD changed since planning; generate and review a current plan");
+        const profile = (await loadProjectProfile(this.project))?.receipt;
+        if (!sameProjectProfile(this.state.draft.profile, profile)) throw new Error("Project profile changed; review a current draft");
         this.binding = await this.fingerprint();
         this.state.approvalToken = randomUUID();
       } else if (action === "start") {
@@ -147,15 +158,16 @@ export class LaunchService {
         const dirty = (await exec("git", ["-C", this.project, "status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude).teamsmith"], { windowsHide: true })).stdout;
         if (dirty.trim()) throw new Error("Commit or preserve local changes before launching; teams start from committed HEAD");
         const concurrency = this.concurrency(body);
-        const spec = this.state.draft.spec;
+        const { spec, profile } = this.state.draft;
         await withStorageLock(join(this.project, ".teamsmith/execution"), async () => {
-          if (this.binding !== await this.fingerprint()) throw new Error("Project changed since approval");
+          if (this.binding !== await this.fingerprint() || !sameProjectProfile(profile, (await loadProjectProfile(this.project))?.receipt)) throw new Error("Project changed since approval");
+          await this.execution!.assertAdmission?.(this.project, spec, profile);
           const ledger = await readLedger(join(this.project, ".teamsmith/ledger.jsonl"));
           const latest = await loadLatestSpec(join(this.project, ".teamsmith"));
           const state = reduceLedger(ledger.events);
           if (ledger.issues.length || state.anomalies.length || await optional(join(this.project, ".teamsmith/team.json"))) throw new Error("Existing run requires inspection or recovery");
           if (ledger.events.length) {
-            if (!latest?.spec || hash(latest.spec) !== hash(spec) || !state.specApproved || state.budgetTarget !== parseBudget(spec.priorities.budget_target!) || state.phase !== "execute" || state.outcome || state.paused || state.pendingQuestions.length || state.openCheckpoints.some(c => c.blocking) || Object.values(state.units).some(u => u.status !== "pending")) throw new Error("Existing run is incompatible with this approved plan");
+            if (!latest?.spec || hash(latest.spec) !== hash(spec) || !state.specApproved || !sameProjectProfile(state.approvedProjectProfile, profile) || state.budgetTarget !== parseBudget(spec.priorities.budget_target!) || state.phase !== "execute" || state.outcome || state.paused || state.pendingQuestions.length || state.openCheckpoints.some(c => c.blocking) || Object.values(state.units).some(u => u.status !== "pending")) throw new Error("Existing run is incompatible with this approved plan");
           } else {
             if (latest) throw new Error("Existing specification must be approved through its current workflow");
             if (spec.spec_version !== 1) throw new Error("A new run must start at spec version 1");
@@ -169,7 +181,7 @@ export class LaunchService {
             await writeSpecFile(join(this.project, ".teamsmith"), spec);
             const writer = await LedgerWriter.open(join(this.project, ".teamsmith/ledger.jsonl"));
             await writer.append("run.started", { data: { run_id: randomUUID(), teamsmith_version: "0.1.0", ledger_schema_version: 1 } });
-            await writer.append("spec.approved", { actor: "user", data: { version: spec.spec_version, budget_target: parseBudget(spec.priorities.budget_target!), units: spec.work_units.map(u => ({ id: u.id, ...(u.depends_on ? { depends_on: u.depends_on } : {}) })) } });
+            await writer.append("spec.approved", { actor: "user", data: { version: spec.spec_version, ...(profile ? { project_profile: profile } : {}), budget_target: parseBudget(spec.priorities.budget_target!), units: spec.work_units.map(u => ({ id: u.id, ...(u.depends_on ? { depends_on: u.depends_on } : {}) })) } });
             for (const unit of spec.work_units) await writer.append("budget.estimated", { unit_id: unit.id, data: { tokens: parseBudget(unit.budget_est!) } });
             await writer.append("run.phase_entered", { data: { phase: "execute" } });
           }
@@ -223,7 +235,9 @@ export class LaunchService {
         if (result.head !== head || currentHead !== head) throw new Error("Project HEAD changed during planning; generate again from the current revision");
         if (!result.usage || ![result.usage.input, result.usage.cached, result.usage.output].every(n => Number.isSafeInteger(n) && n >= 0) || result.usage.cached > result.usage.input) throw new Error("Planner returned invalid usage");
         const spec = this.validDraft(result.spec);
-        this.state.draft = { revision: hash(spec), spec: structuredClone(spec) };
+        const profile = (await loadProjectProfile(this.project))?.receipt;
+        if (!sameProjectProfile(result.profile, profile)) throw new Error("Project profile changed during planning; generate a new plan");
+        this.state.draft = { revision: draftRevision(spec, profile), spec: structuredClone(spec), ...(profile ? { profile } : {}) };
         delete this.state.approvalToken; this.binding = undefined; this.plannedHead = head;
         this.state.planning = { requestId, status: "completed", summary: result.summary, usage: result.usage, provider: result.provider, ...(result.model ? { model: result.model } : {}), draftRevision: this.state.draft.revision };
       });

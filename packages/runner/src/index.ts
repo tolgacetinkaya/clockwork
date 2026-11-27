@@ -1,4 +1,4 @@
-import { UnreconciledExecutionError } from "@clockwork/core";
+import { ProjectEgressBeforeDispatchError, UnreconciledExecutionError } from "@clockwork/core";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
@@ -10,6 +10,10 @@ import {
   buildVerifierPrompt,
   LedgerWriter,
   loadLatestSpec,
+  loadProjectProfile,
+  prepareProjectEgress,
+  projectProfilePrompt,
+  sameProjectProfile,
   parseBudget,
   readLedger,
   reduceLedger,
@@ -19,6 +23,8 @@ import type {
   ExecutionModels,
   ExecutionAdapter,
   ExecutionReport,
+  ProjectProfile,
+  ProjectProfileReceipt,
   Spec,
   RunState,
 } from "@clockwork/core";
@@ -125,7 +131,7 @@ async function control(project: string): Promise<void> {
 async function preflight(
   project: string,
   allowExhausted = false,
-): Promise<{ spec: Spec; state: RunState }> {
+): Promise<{ spec: Spec; state: RunState; profile?: ProjectProfile }> {
   await control(project);
   const ledger = await readLedger(join(project, ".teamsmith/ledger.jsonl"));
   const state = reduceLedger(ledger.events);
@@ -169,7 +175,11 @@ async function preflight(
       );
     }
   }
-  return { spec: loaded.spec, state };
+  const profile = await loadProjectProfile(project);
+  if (!sameProjectProfile(state.approvedProjectProfile, profile?.receipt)) {
+    throw new Error("Project profile differs from the approved run; review the profile before execution");
+  }
+  return { spec: loaded.spec, state, profile };
 }
 /** One active worker per project. The orchestration policy is independent of the provider. */
 export async function runUnit(options: RunUnitOptions): Promise<ExecutionReport> {
@@ -180,9 +190,10 @@ export async function runUnit(options: RunUnitOptions): Promise<ExecutionReport>
 async function executeUnit(options: RunUnitOptions): Promise<ExecutionReport> {
   const { project, unit: unitId, mode, adapter } = options;
     options.signal?.throwIfAborted();
-    const { spec, state } = await preflight(project);
+    const { spec, state, profile } = await preflight(project);
     const executionModels = resolveModels(spec, options);
     const model = mode === "produce" ? executionModels.producer_model : executionModels.verifier_model;
+    const projectEgress = prepareProjectEgress(project, profile, adapter, model);
     const unit = spec.work_units.find((u) => u.id === unitId);
     const current = state.units[unitId];
     if (!unit || !current) throw new Error("Unknown work unit");
@@ -260,7 +271,7 @@ async function executeUnit(options: RunUnitOptions): Promise<ExecutionReport> {
       mode === "produce" ? "unit.started" : "unit.verify_started",
       data,
     );
-    await append("agent.spawned", data);
+    await append("agent.spawned", { ...data, ...(profile ? { applied_profile: profile.receipt } : {}) });
     const controller = new AbortController();
     const abort = () => controller.abort(new Error("Execution interrupted"));
     options.signal?.addEventListener("abort", abort, { once: true });
@@ -307,7 +318,8 @@ and passed boolean. Missing evidence is not success. Do not put credentials into
 `;
       for await (const event of watchExecution(adapter.execute({
         workspace,
-        prompt,
+        prompt: prompt + projectProfilePrompt(profile),
+        projectEgress,
         mode,
         model,
         signal: controller.signal,
@@ -469,7 +481,7 @@ and passed boolean. Missing evidence is not success. Do not put credentials into
       if (!terminalRecorded) await append("agent.error", {
         ...data,
         thread_id: threadId,
-        usage_unknown: !usageRecorded,
+        usage_unknown: !usageRecorded && !(error instanceof ProjectEgressBeforeDispatchError),
         execution_unreconciled: error instanceof UnreconciledExecutionError || (error instanceof WatchdogError && error.unreconciled),
         reason: error instanceof Error ? error.message : "Execution failed",
       });
@@ -526,6 +538,20 @@ interface TeamReceipt extends TeamResult {
   workspaces: Record<string, string>; commits: Record<string, string>;
   integrationHead: string; attempt: number;
 }
+function checkTeamEgress(project: string, profile: ProjectProfile | undefined, adapter: ExecutionAdapter, models: ExecutionModels, spec: Spec): void {
+  prepareProjectEgress(project, profile, adapter, models.producer_model);
+  prepareProjectEgress(project, profile, adapter, models.verifier_model);
+  if (spec.verification?.global_gates?.length) {
+    prepareProjectEgress(project, profile, adapter, models.integration_verifier_model);
+  }
+}
+
+export async function assertTeamProfileEgress(options: Pick<RunTeamOptions, "project" | "adapter"> & ExecutionModelOptions, spec: Spec, expectedProfile?: ProjectProfileReceipt): Promise<void> {
+  const profile = await loadProjectProfile(options.project);
+  if (!sameProjectProfile(profile?.receipt, expectedProfile)) throw new Error("Project profile changed since approval");
+  checkTeamEgress(options.project, profile, options.adapter, resolveModels(spec, options), spec);
+}
+
 async function executeTeam(options: RunTeamOptions, recovery?: TeamReceipt): Promise<TeamResult> {
   const concurrency = options.concurrency ?? 2;
   if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8)
@@ -544,6 +570,7 @@ async function executeTeam(options: RunTeamOptions, recovery?: TeamReceipt): Pro
   }
   const initial = await preflight(project);
   const executionModels = resolveModels(initial.spec, options);
+  checkTeamEgress(project, initial.profile, options.adapter, executionModels, initial.spec);
   if (recovery && !sameModels(recovery.executionModels, executionModels)) throw new Error("Recovery model selection changed; manual reconciliation required");
   if (!recovery && Object.values(initial.state.units).some(u => u.status !== "pending"))
     throw new Error("Team execution requires pending units; existing deliveries need manual reconciliation");
@@ -718,7 +745,8 @@ async function verifyIntegration(options: RunTeamOptions, spec: Spec, workspace:
   const model = executionModels.integration_verifier_model;
   const gates = spec.verification?.global_gates ?? [];
   if (!gates.length) return { status: "not_configured" };
-  await preflight(options.project);
+  const { profile } = await preflight(options.project);
+  const projectEgress = prepareProjectEgress(options.project, profile, options.adapter, model);
   const watchdog = resolvedWatchdog(options.watchdog, spec.verification?.watchdog);
   const before = await fingerprint(await checkWorkspace(options.project, workspace));
   if (before.files.length) throw new Error("Integration verification requires a clean worktree");
@@ -754,10 +782,10 @@ async function verifyIntegration(options: RunTeamOptions, spec: Spec, workspace:
   };
   const delivery = trackDelivery({ execution, timeoutMs: watchdog.delivery_ms, append, abort: reason => controller.abort(reason), onTimeout: () => recordAlert("delivery_timeout", { elapsed_ms: Date.now() - watchdogStarted, idle_ms: watchdog.delivery_ms }) });
   try {
-    await append("agent.spawned");
+    await append("agent.spawned", profile ? { applied_profile: profile.receipt } : {});
     for await (const event of watchExecution(options.adapter.execute({
-      workspace, mode: "verify", model, signal: controller.signal,
-      prompt: `# Final integration verification\n\nGoal: ${spec.meta.goal}\n\n## User constraints\n${(spec.meta.constraints ?? []).map(c => `- ${c}`).join("\n")}\n\n## Approved assumptions\n${(spec.meta.assumptions ?? []).map(a => `- ${a}`).join("\n")}\n\nYou are a fresh independent read-only verifier over the combined integrated result.\nRun EVERY global acceptance gate below and give exact criterion, EXACT command string from the completed command_execution tool event (including shell wrappers), observed result and passed boolean.\nNever modify files, Git metadata, commit, start agents, publish, access credentials or external services.\nA gate without actual evidence fails. Return ONLY the report JSON with outcome accepted, rework, or blocked.\n\n## Global acceptance gates\n${gates.map(g => `- ${g}`).join("\n")}\n`,
+      workspace, mode: "verify", model, signal: controller.signal, projectEgress,
+      prompt: `# Final integration verification\n\nGoal: ${spec.meta.goal}\n\n## User constraints\n${(spec.meta.constraints ?? []).map(c => `- ${c}`).join("\n")}\n\n## Approved assumptions\n${(spec.meta.assumptions ?? []).map(a => `- ${a}`).join("\n")}\n\nYou are a fresh independent read-only verifier over the combined integrated result.\nRun EVERY global acceptance gate below and give exact criterion, EXACT command string from the completed command_execution tool event (including shell wrappers), observed result and passed boolean.\nNever modify files, Git metadata, commit, start agents, publish, access credentials or external services.\nA gate without actual evidence fails. Return ONLY the report JSON with outcome accepted, rework, or blocked.\n\n## Global acceptance gates\n${gates.map(g => `- ${g}`).join("\n")}\n` + projectProfilePrompt(profile),
     }), { signal: controller.signal, abort: reason => controller.abort(reason), policy: watchdog, onAlert: recordAlert })) {
       controller.signal.throwIfAborted();
       if (event.type === "heartbeat") await append("agent.activity", { kind: "process_heartbeat", status: "updated" });
@@ -795,7 +823,7 @@ async function verifyIntegration(options: RunTeamOptions, spec: Spec, workspace:
     else verdict = { status: "passed", report };
     await delivery.acknowledge(report.outcome);
   } catch (error) {
-    if (!terminalRecorded) await append("agent.error", { usage_unknown: !usageRecorded, execution_unreconciled: error instanceof UnreconciledExecutionError || (error instanceof WatchdogError && error.unreconciled), reason: error instanceof Error ? error.message : "Integration verification failed" });
+    if (!terminalRecorded) await append("agent.error", { usage_unknown: !usageRecorded && !(error instanceof ProjectEgressBeforeDispatchError), execution_unreconciled: error instanceof UnreconciledExecutionError || (error instanceof WatchdogError && error.unreconciled), reason: error instanceof Error ? error.message : "Integration verification failed" });
     await delivery.acknowledge("rejected");
     throw error;
   } finally {
@@ -847,6 +875,11 @@ async function inspectRecovery(project: string, ownsLease: boolean, options: Exe
     const ledger = await readLedger(join(project, ".teamsmith/ledger.jsonl"));
     const state = reduceLedger(ledger.events);
     reasons.push(...unsettledExecutionReasons(state));
+    const profile = await loadProjectProfile(project);
+    hash.update(JSON.stringify(profile?.receipt ?? null));
+    if (!sameProjectProfile(state.approvedProjectProfile, profile?.receipt)) {
+      reasons.push("Project profile differs from the approved run; restore the reviewed profile before resuming");
+    }
     if (ledger.issues.length || state.anomalies.length) reasons.push("Repair ledger diagnostics before recovery");
     const loaded = await loadLatestSpec(join(project, ".teamsmith"));
     hash.update(JSON.stringify(loaded?.spec));
@@ -934,6 +967,9 @@ export async function resumeTeam(options: RunTeamOptions & { recoveryToken: stri
     if (inspection.recoveryToken !== options.recoveryToken) throw new Error("Recovery review is stale; inspect the team again before resuming");
     if (!inspection.canResume || !inspection.receipt) throw new Error(`Recovery is blocked: ${inspection.reasons.join("; ")}`);
     const r = inspection.receipt;
+    const loaded = await loadLatestSpec(join(options.project, ".teamsmith"));
+    if (!loaded?.spec) throw new Error("Recovery requires the approved specification");
+    checkTeamEgress(options.project, await loadProjectProfile(options.project), options.adapter, resolveModels(loaded.spec, options), loaded.spec);
     const archive = join(options.project, ".teamsmith", `team-${r.id}-attempt-${r.attempt}.json`);
     // Exclusive creation preserves the old attempt, including its original execution receipts.
     const receipts: Record<string, unknown> = {};

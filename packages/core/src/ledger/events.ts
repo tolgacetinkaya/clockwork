@@ -7,6 +7,7 @@
  * LEDGER_SCHEMA_VERSION when the meaning of existing events shifts.
  */
 
+import { isProjectProfileReceipt } from "../execution/project-profile.js";
 import type { ValidationIssue } from "../spec/types.js";
 
 export const LEDGER_SCHEMA_VERSION = 1;
@@ -155,8 +156,10 @@ function validateData(event: LedgerEvent, issues: ValidationIssue[]): void {
     if (!isSafeId(event.unit_id)) fail(`${event.type} requires unit_id`);
   }
   if (event.type.startsWith("agent.") && !isSafeId(event.agent_id)) fail(`${event.type} requires agent_id`);
+  if (event.type === "spec.approved" && d.project_profile !== undefined && !isProjectProfileReceipt(d.project_profile)) fail("Invalid approved project profile receipt");
   switch (event.type) {
     case "agent.spawned":
+      if (d.applied_profile !== undefined && (d.watchdog === undefined || !isProjectProfileReceipt(d.applied_profile))) fail("Invalid applied project profile receipt");
       if (d.watchdog !== undefined) {
         if (!validWatchdog(d.watchdog)) fail("Invalid resolved watchdog policy");
         if (!isExecutionId(d.execution)) fail("Tracked spawn requires execution UUID");

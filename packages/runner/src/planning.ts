@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertStorageFile, atomicWrite, buildPlanningPrompt, modelIdSchema, readLedger, reduceLedger, validatePlanningInput, validatePlanningProposal, validatePlanningReceipt, withStorageLock } from "@clockwork/core";
-import type { ExecutionEvent, GoalPlan, GoalPlanningInput, PlanningAdapter, PlanningEvent, PlanningReceipt } from "@clockwork/core";
+import { ProjectEgressBeforeDispatchError, loadProjectProfile, prepareProjectEgress, projectProfilePrompt, assertStorageFile, atomicWrite, buildPlanningPrompt, modelIdSchema, readLedger, reduceLedger, validatePlanningInput, validatePlanningProposal, validatePlanningReceipt, withStorageLock } from "@clockwork/core";
+import type { ProjectProfileReceipt, ExecutionEvent, GoalPlan, GoalPlanningInput, PlanningAdapter, PlanningEvent, PlanningReceipt } from "@clockwork/core";
 import type { WorkspaceFingerprint } from "./workspace.js";
 import { fingerprint, git } from "./workspace.js";
 import { WatchdogError, watchExecution, resolveWatchdogPolicy } from "./watchdog.js";
 import type { WatchdogPolicy } from "./watchdog.js";
 
 export interface PlanningUsage { input: number; cached: number; output: number }
-export interface GoalPlanResult extends GoalPlan { usage: PlanningUsage; provider: string; model?: string; head: string }
+export interface GoalPlanResult extends GoalPlan { usage: PlanningUsage; provider: string; model?: string; head: string; profile?: ProjectProfileReceipt }
 export interface GenerateGoalPlanOptions {
   project: string; input: GoalPlanningInput; adapter: PlanningAdapter; model?: string;
   watchdog?: Partial<WatchdogPolicy>; signal?: AbortSignal;
@@ -44,24 +44,29 @@ export async function generateGoalPlan(options: GenerateGoalPlanOptions): Promis
     options.signal?.throwIfAborted();
     await assertCanPlan(options.project);
     const head = await git(options.project, "rev-parse", "HEAD");
+    const profile = await loadProjectProfile(options.project);
+    const projectEgress = prepareProjectEgress(options.project, profile, options.adapter, options.model);
+    const provider = options.adapter.providerForModel?.(options.model) ?? options.adapter.id;
     const workspace = await mkdtemp(join(tmpdir(), "clockwork-plan-"));
-    let linked = false, closed = false, changed = false;
+    let linked = false, closed = false, changed = false, dispatched = false;
     let before: WorkspaceFingerprint | undefined;
     let usage: PlanningUsage | undefined, proposal: unknown;
     const controller = new AbortController();
     const abort = () => controller.abort(options.signal?.reason);
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
-    const receipt: PlanningReceipt = { version: 1, id: randomUUID(), status: "running", head, workspace, provider: options.adapter.providerForModel?.(options.model) ?? options.adapter.id, ...(options.model ? { model: options.model } : {}), usageUnknown: true, unreconciled: true };
+    const receipt: PlanningReceipt = { version: 1, id: randomUUID(), status: "running", head, workspace, provider, ...(options.model ? { model: options.model } : {}), usageUnknown: true, unreconciled: true };
     const save = () => atomicWrite(join(options.project, ".teamsmith/planning.json"), JSON.stringify(receipt));
     try {
       await git(options.project, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", workspace, head); linked = true;
       before = await fingerprint(workspace);
       await save();
-      const source = options.adapter.plan({ workspace, prompt: buildPlanningPrompt(input), ...(options.model ? { model: options.model } : {}), signal: controller.signal });
+      await projectEgress.assertCurrent();
+      const source = options.adapter.plan({ workspace, prompt: buildPlanningPrompt(input) + projectProfilePrompt(profile), projectEgress, ...(options.model ? { model: options.model } : {}), signal: controller.signal });
       // Forward return() to the real iterator. An async-generator wrapper could hide a
       // stuck outstanding next(), making its shutdown impossible to establish.
       const iterator = source[Symbol.asyncIterator]();
+      dispatched = true;
       const map = (step: IteratorResult<PlanningEvent>): IteratorResult<ExecutionEvent> => {
         if (step.done) { closed = true; return { done: true, value: undefined }; }
         if (step.value.type !== "plan") return { done: false, value: step.value };
@@ -87,10 +92,16 @@ export async function generateGoalPlan(options: GenerateGoalPlanOptions): Promis
       if (changed) throw new Error("Read-only planner changed its workspace; retained for review");
       if (head !== await git(options.project, "rev-parse", "HEAD")) throw new Error("Project HEAD changed during planning; generate again from the current revision");
       await assertCanPlan(options.project, true);
+      await projectEgress.assertCurrent();
       const plan = validatePlanningProposal(proposal, input);
       receipt.status = "completed"; receipt.unreconciled = false; await save();
-      return { ...plan, usage, provider: options.adapter.providerForModel?.(options.model) ?? options.adapter.id, ...(options.model ? { model: options.model } : {}), head };
+      return { ...plan, usage, provider, ...(profile ? { profile: profile.receipt } : {}), ...(options.model ? { model: options.model } : {}), head };
     } catch (error) {
+      if (!dispatched || (closed && error instanceof ProjectEgressBeforeDispatchError)) {
+        closed = true;
+        receipt.usage = { input: 0, cached: 0, output: 0 };
+        receipt.usageUnknown = false;
+      }
       receipt.status = "error"; receipt.unreconciled = error instanceof WatchdogError ? error.unreconciled : !closed && linked;
       receipt.error = error instanceof Error ? error.message : "Planning failed";
       if (linked) await save();

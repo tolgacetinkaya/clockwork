@@ -1,5 +1,6 @@
 import { Ajv } from "ajv";
 import type { AgentDef, ExecutionModels, Spec, WorkUnit } from "../spec/types.js";
+import type { ProjectEgress, ProjectEgressPolicy } from "./project-profile.js";
 import type { ExecutionEvent } from "../execution/types.js";
 import { executionModelsSchema } from "../spec/schema.js";
 import { validateSpec } from "../spec/validate.js";
@@ -27,9 +28,11 @@ export interface PlanningRequest {
   prompt: string;
   model?: string;
   signal: AbortSignal;
+  projectEgress?: ProjectEgress;
 }
 export type PlanningEvent = Exclude<ExecutionEvent, { type: "report" }> | { type: "plan"; proposal: PlanningProposal };
 export interface PlanningAdapter {
+  assertProjectEgress?(policy: ProjectEgressPolicy, model?: string): void;
   providerForModel?(model?: string): string;
   readonly id: string;
   plan(request: PlanningRequest): AsyncIterable<PlanningEvent>;

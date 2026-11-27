@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { LedgerWriter, writeSpecFile, validatePlanningProposal } from "@clockwork/core";
+import { ProjectEgressBeforeDispatchError, LedgerWriter, writeSpecFile, validatePlanningProposal } from "@clockwork/core";
 import type { PlanningAdapter, PlanningProposal } from "@clockwork/core";
 import { generateGoalPlan, runTeam, runUnit, resumeTeam, inspectTeamRecovery } from "../src/index.js";
 import { git } from "../src/workspace.js";
@@ -33,6 +33,18 @@ it("plans from committed detached HEAD with real usage without approving or star
   await expect(readFile(join(project, ".teamsmith/ledger.jsonl"))).rejects.toThrow();
   await expect(readFile(join(workspace, "README.md"))).rejects.toThrow();
   expect(await git(project, "rev-parse", "HEAD")).toBe(head);
+});
+it("cleans up and allows replanning after an adapter blocks the first outbound request", async () => {
+  const project = await fixture();
+  let workspace = "";
+  const adapter: PlanningAdapter = { id: "controlled", async *plan(request) {
+    workspace = request.workspace;
+    throw new ProjectEgressBeforeDispatchError(new Error("Project profile changed"));
+  } };
+  await expect(generateGoalPlan({ project, input, adapter })).rejects.toThrow("Project profile changed");
+  expect(await receipt(project)).toMatchObject({ status: "error", usageUnknown: false, unreconciled: false, usage: { input: 0, cached: 0, output: 0 } });
+  await expect(readFile(join(workspace, "README.md"))).rejects.toThrow();
+  await expect(generateGoalPlan({ project, input, adapter })).rejects.toThrow("Project profile changed");
 });
 it("rejects writes and preserves the workspace and usage evidence even if the planner fails", async () => {
   const project = await fixture(); let workspace = "";

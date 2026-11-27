@@ -54,6 +54,26 @@ describe("API model routing and host policy", () => {
     }
     expect(() => validateApiConfig({ sandboxImage: "node:24", providers: { kimi: { options: { tools: [] } } } })).toThrow("Unknown");
   });
+  it("denies an unapproved destination before planning or executing", async () => {
+    const { adapter, sandbox, transport } = setup([]);
+    const request = { ...req, projectEgress: { policy: { allowCodex: false, apiEndpoints: { deepseek: "https://other.invalid" } }, assertCurrent: async () => {} } };
+    await expect(adapter.plan(request)[Symbol.asyncIterator]().next()).rejects.toThrow("does not allow");
+    await expect(adapter.execute(request)[Symbol.asyncIterator]().next()).rejects.toThrow("does not allow");
+    expect(transport).not.toHaveBeenCalled();
+    expect(sandbox.check).not.toHaveBeenCalled();
+  });
+  it("stops an allowed route before tool output is sent after profile revocation", async () => {
+    const { adapter, sandbox, transport } = setup([response({ role: "assistant", tool_calls: [tool()] }, "tool_calls")]);
+    let allowed = true;
+    sandbox.run.mockImplementation(async () => { allowed = false; return { exitCode: 0, output: "project data" }; });
+    const request = { ...req, projectEgress: {
+      policy: { allowCodex: false, apiEndpoints: { deepseek: config.providers.deepseek!.baseUrl } },
+      async assertCurrent() { if (!allowed) throw new Error("Profile changed"); },
+    } };
+    await expect(collect(adapter.execute(request))).rejects.toThrow("Profile changed");
+    expect(sandbox.run).toHaveBeenCalledOnce();
+    expect(transport).toHaveBeenCalledOnce();
+  });
   it("does not transmit a request or start a sandbox when the API key is missing", async () => {
     const transport = vi.fn(), sandbox = { check: vi.fn(), run: vi.fn() };
     await expect(collect(new ApiAdapter("kimi", { config, env: {}, transport, sandbox }).execute(req))).rejects.toThrow("MOONSHOT_API_KEY");
@@ -66,7 +86,10 @@ describe("bounded API tool loop", () => {
       response({ role: "assistant", content: null, reasoning_content: "provider continuation", tool_calls: [tool()] }, "tool_calls"),
       response({ role: "assistant", content: JSON.stringify(report) }),
     ]);
-    const events = await collect(adapter.execute(req));
+    const events = await collect(adapter.execute({ ...req, projectEgress: {
+      policy: { allowCodex: false, apiEndpoints: { deepseek: config.providers.deepseek!.baseUrl } },
+      assertCurrent: async () => {},
+    } }));
     expect(sandbox.run).toHaveBeenCalledWith(req.workspace, true, "node test.cjs", req.signal);
     expect(events).toContainEqual({ type: "command", id: "call-1", command: "node test.cjs", exitCode: 0, status: "completed" });
     expect(events.filter(e => e.type === "usage")).toEqual([{ type: "usage", input: 200, cached: 40, output: 16 }]);

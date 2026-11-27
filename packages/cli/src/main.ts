@@ -33,6 +33,7 @@ import {
   ThresholdsError,
   buildAuditReport,
   buildExperiencePrior,
+  loadProjectProfile,
   checkRun,
   collectScannableFiles,
   consumeCommands,
@@ -64,14 +65,14 @@ import {
   writeRetroRecord,
   writeSpecFile,
 } from "@clockwork/core";
-import type { EventType, LedgerEvent, RunState, Spec, GoalPlanningInput } from "@clockwork/core";
+import type { EventType, LedgerEvent, RunState, Spec, GoalPlanningInput, ProjectProfileReceipt } from "@clockwork/core";
 import {
   validConfig,
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
 import { ModelRouter, PROVIDERS, loadApiConfig, listModels } from "@clockwork/adapter-api";
 import { CodexAdapter } from "@clockwork/adapter-codex";
-import { generateGoalPlan, inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
+import { assertTeamProfileEgress, generateGoalPlan, inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
 
 const TS_DIR = ".teamsmith";
 const LEDGER = "ledger.jsonl";
@@ -179,6 +180,18 @@ async function cmdEvent(cwd: string, args: ParsedArgs): Promise<CliResult> {
     return fail(`invalid actor: ${actor}`);
   }
 
+  if (type === "spec.approved") {
+    const profile = await loadProjectProfile(cwd);
+    if (data?.project_profile !== undefined) return fail("The project profile receipt is supplied by Clockwork");
+    if (profile) {
+      if (actor !== "user" || args.flags["profile-digest"] !== profile.receipt.digest) {
+        return fail("Review the current Clockwork project profile and approve with --actor user --profile-digest <digest>");
+      }
+      data = { ...data, project_profile: profile.receipt };
+    } else if (args.flags["profile-digest"] !== undefined) {
+      return fail("The reviewed project profile is missing");
+    }
+  }
   const writer = await LedgerWriter.open(join(cwd, TS_DIR, LEDGER));
   const event = await writer.append(type as EventType, {
     ...(actor !== undefined ? { actor: actor as LedgerEvent["actor"] } : {}),
@@ -526,6 +539,8 @@ async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
   if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
   const adapter = enabled ? await hostAdapter(args, timeoutMs, windowsSandbox) : undefined;
   const execution = adapter ? {
+    assertAdmission: (project: string, spec: Spec, profile?: ProjectProfileReceipt) =>
+      assertTeamProfileEgress({ project, adapter, ...models }, spec, profile),
     plan: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => generateGoalPlan({ ...options, input: planningInput(options.input, models), adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs } }),
     run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
     inspect: (project: string) => inspectTeamRecovery(project, models),
@@ -821,6 +836,7 @@ const USAGE = `clockwork <command>
   commands <pull|peek|ack N>    read/replay panel commands; ack only after applying them
   audit [--dir D --json]        secret scan + npm audit card (reject exits nonzero)
   gp verify <evidence-dir>      mechanical golden-path threshold check (--golden-path gp-N)
+  profile                       show the local version, digest, and rule IDs
   prompt <unit|verify|agentdef> <id>   print a generated prompt
   codex team [--concurrency 2]  schedule approved Codex units (1-8 concurrent)
   codex <produce|verify> <unit> --workspace <path>   run a bounded local Codex worker
@@ -872,6 +888,10 @@ export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
         return await setControl(cwd, { paused: false, kill: true });
       case "retro":
         return await cmdRetro(cwd, args);
+      case "profile": {
+        const profile = await loadProjectProfile(cwd);
+        return ok(JSON.stringify(profile?.receipt ?? null, null, 2));
+      }
       case "plan":
         return await cmdPlan(cwd, args);
       case "ui":

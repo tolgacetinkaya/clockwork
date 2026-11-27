@@ -12,7 +12,7 @@ import type {
   PlanningEvent,
   PlanningProposal,
 } from "@clockwork/core";
-import { planningProposalSchema, parsePlanningProposal } from "@clockwork/core";
+import { ProjectEgressBeforeDispatchError, planningProposalSchema, parsePlanningProposal } from "@clockwork/core";
 
 export { executionReportSchema as REPORT_SCHEMA, parseExecutionReport as parseReport } from "@clockwork/core";
 import { executionReportSchema as REPORT_SCHEMA, parseExecutionReport as parseReport } from "@clockwork/core";
@@ -218,6 +218,9 @@ export interface CodexOptions {
 }
 export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
   readonly id = "codex";
+  assertProjectEgress(policy: import("@clockwork/core").ProjectEgressPolicy): void {
+    if (!policy.allowCodex) throw new Error("Project profile does not allow the native Codex client");
+  }
   constructor(private readonly options: CodexOptions = {}) { validateCompactLimit(options.autoCompactTokenLimit); }
   async *execute(request: ExecutionRequest): AsyncGenerator<ExecutionEvent> {
     for await (const event of this.structured(request, REPORT_SCHEMA, new CodexDecoder())) {
@@ -232,6 +235,7 @@ export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
     }
   }
   private async *structured<T>(request: ExecutionRequest, outputSchema: unknown, decoder: StructuredCodexDecoder<T>): AsyncGenerator<Exclude<ExecutionEvent, { type: "report" }> | { type: "structured"; value: T }> {
+    if (request.projectEgress?.policy) this.assertProjectEgress(request.projectEgress.policy);
     request.signal.throwIfAborted();
     const heartbeatMs = this.options.heartbeatMs ?? 5000;
     if (!Number.isSafeInteger(heartbeatMs) || heartbeatMs < 10)
@@ -256,6 +260,9 @@ export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
       delete environment.CODEX_API_KEY;
       delete environment.CLOCKWORK_PROJECT_ROOT;
       delete environment.TEAMSMITH_PROJECT_ROOT;
+      try { await request.projectEgress?.assertCurrent(); }
+      catch (error) { throw new ProjectEgressBeforeDispatchError(error); }
+      controller.signal.throwIfAborted();
       child = spawn(
         this.options.executable ??
           (process.platform === "win32" ? "codex.exe" : "codex"),

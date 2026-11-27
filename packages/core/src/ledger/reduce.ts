@@ -10,6 +10,8 @@
  * an event; it is the mechanical consequence of the dependency graph.
  */
 
+import { isProjectProfileReceipt, sameProjectProfile } from "../execution/project-profile.js";
+import type { ProjectProfileReceipt } from "../execution/project-profile.js";
 import { PHASES, validateEvent } from "./events.js";
 import type { LedgerEvent, Phase } from "./events.js";
 import type { ValidationIssue, WatchdogPolicy } from "../spec/types.js";
@@ -48,6 +50,7 @@ export interface OpenCheckpoint {
 
 export interface ExecutionTracking {
   execution: string;
+  appliedProfile?: ProjectProfileReceipt;
   agentId: string;
   unitId?: string;
   mode: "produce" | "verify" | "integration_verify";
@@ -72,6 +75,7 @@ export interface ExecutionTracking {
 }
 
 export interface RunState {
+  approvedProjectProfile?: ProjectProfileReceipt;
   /** Absent for historical ledgers; introduced only by a tracked spawn. */
   executions?: Record<string, ExecutionTracking>;
   ledgerSchemaVersion: number | null;
@@ -216,6 +220,7 @@ function applyEvent(state: RunState, event: LedgerEvent): void {
       break;
     }
     case "spec.approved": {
+      if (isProjectProfileReceipt(data.project_profile)) state.approvedProjectProfile = data.project_profile;
       state.specVersion = typeof data.version === "number" ? data.version : state.specVersion;
       state.specApproved = true;
       if (typeof data.budget_target === "number") state.budgetTarget = data.budget_target;
@@ -281,6 +286,7 @@ function applyEvent(state: RunState, event: LedgerEvent): void {
         lastActivityAt: event.ts,
         status: "running",
         watchdog: { ...data.watchdog as WatchdogPolicy },
+        ...(isProjectProfileReceipt(data.applied_profile) ? { appliedProfile: data.applied_profile } : {}),
       };
       break;
     }
@@ -537,6 +543,7 @@ export function validateEventTransition(state: RunState, event: LedgerEvent): Va
   }
   const tracking = typeof d.execution === "string" ? state.executions?.[d.execution] : undefined;
   const trackingEvent = ["agent.watchdog", "agent.delivery_received", "agent.delivery_acknowledged", "agent.execution_reconciled"].includes(event.type);
+  if (event.type === "agent.spawned" && d.watchdog !== undefined && !sameProjectProfile(state.approvedProjectProfile, isProjectProfileReceipt(d.applied_profile) ? d.applied_profile : undefined)) fail("Execution profile does not match the approved project profile");
   if (event.type === "agent.spawned" && tracking) fail("Execution already spawned");
   if (trackingEvent && !tracking) fail("Event requires a spawned tracked execution");
   if (state.executions && ["agent.activity", "agent.completed", "agent.error"].includes(event.type) && !tracking &&
