@@ -89,9 +89,10 @@ not overwritten by goal generation.
 
 ## Current limits and verification
 
-This first implementation supports the local Codex planning adapter and the
-current target repository. Cross-provider planning, prior-project preference
-import, automatic skill discovery and learned cost optimization are separate work.
+Planning supports local Codex and configured API model routes in the current
+target repository. See [API providers](api-providers.md) for provider-qualified
+model IDs and Docker requirements. Prior-project preference import, automatic
+skill discovery and learned cost optimization are separate work.
 Semantic plan quality still needs user review; schema validation does not prove
 that generated requirements are correct or complete.
 

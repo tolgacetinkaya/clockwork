@@ -8,6 +8,7 @@
  */
 
 import { exec } from "node:child_process";
+import { claudeChat } from "./claude-chat.js";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, join, relative } from "node:path";
@@ -68,6 +69,7 @@ import {
   validConfig,
 } from "@clockwork/adapter-claude";
 import { startPanel } from "@clockwork/panel";
+import { ModelRouter, PROVIDERS, loadApiConfig, listModels } from "@clockwork/adapter-api";
 import { CodexAdapter } from "@clockwork/adapter-codex";
 import { generateGoalPlan, inspectTeamRecovery, resumeTeam, runTeam, runUnit } from "@clockwork/runner";
 
@@ -472,6 +474,23 @@ function planningInput(input: GoalPlanningInput, models: ReturnType<typeof execu
   return validatePlanningInput({ ...input, ...(Object.keys(execution).length ? { execution } : {}) });
 }
 
+async function hostAdapter(args: ParsedArgs, timeoutMs: number, windowsSandbox?: string): Promise<ModelRouter> {
+  const config = args.flags["providers-config"] ? await loadApiConfig(args.flags["providers-config"]) : undefined;
+  return new ModelRouter(new CodexAdapter({ executable: args.flags["codex-bin"], autoCompactTokenLimit: args.flags["codex-compact-at"] === undefined ? undefined : Number(args.flags["codex-compact-at"]), timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }), config);
+}
+
+async function cmdProviders(args: ParsedArgs): Promise<CliResult> {
+  const config = args.flags["providers-config"] ? await loadApiConfig(args.flags["providers-config"]) : undefined;
+  if (!args.positional.length) {
+    return ok(JSON.stringify({ presets: PROVIDERS, enabled: config ? Object.keys(config.providers) : [], modelFormat: "provider::model", default: "Unqualified model IDs use local Codex" }, null, 2));
+  }
+  const [action, id] = args.positional;
+  if (action !== "models" || !id || args.positional.length !== 2) return fail("usage: providers [models <provider>] --providers-config <absolute-path>");
+  if (!config || !Object.hasOwn(config.providers, id)) return fail("Provider is not enabled in host configuration");
+  const models = await listModels(config.providers[id]!, AbortSignal.timeout(15000));
+  return ok(JSON.stringify({ provider: id, models, note: "Availability does not establish tool-calling capability; arbitrary model IDs are also accepted." }, null, 2));
+}
+
 async function cmdPlan(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const models = executionModelFlags(args);
   if (args.positional.length || !args.flags.goal || args.flags.goal === "true" || args.flags.budget === undefined || args.flags.constraints === "true")
@@ -485,7 +504,7 @@ async function cmdPlan(cwd: string, args: ParsedArgs): Promise<CliResult> {
   const interrupt = () => controller.abort();
   process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt);
   try {
-    const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
+    const adapter = await hostAdapter(args, timeoutMs, windowsSandbox);
     const result = await generateGoalPlan({ project: cwd, input, adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs }, signal: controller.signal });
     return ok(JSON.stringify(result, null, 2));
   } finally {
@@ -505,7 +524,7 @@ async function cmdUi(cwd: string, args: ParsedArgs): Promise<CliResult> {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3600000) return fail("timeout-ms must be between 1000 and 3600000");
   const windowsSandbox = args.flags["windows-sandbox"];
   if (windowsSandbox !== undefined && !["elevated", "unelevated", "mxc"].includes(windowsSandbox)) return fail("windows-sandbox must be elevated, unelevated or mxc");
-  const adapter = enabled ? new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined }) : undefined;
+  const adapter = enabled ? await hostAdapter(args, timeoutMs, windowsSandbox) : undefined;
   const execution = adapter ? {
     plan: (options: { project: string; input: GoalPlanningInput; signal: AbortSignal }) => generateGoalPlan({ ...options, input: planningInput(options.input, models), adapter, model: args.flags["planner-model"] ?? args.flags.model, watchdog: { hard_ms: timeoutMs } }),
     run: (options: { project: string; concurrency: number; signal: AbortSignal }) => runTeam({ ...options, adapter, ...models, watchdog: { hard_ms: timeoutMs } }),
@@ -757,7 +776,7 @@ async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
   process.once("SIGINT", interrupt);
   process.once("SIGTERM", interrupt);
   try {
-    const adapter = new CodexAdapter({ executable: args.flags["codex-bin"], timeoutMs, windowsSandbox: windowsSandbox as "elevated" | "unelevated" | "mxc" | undefined });
+    const adapter = await hostAdapter(args, timeoutMs, windowsSandbox);
     if (mode === "team") {
       const report = await runTeam({ project: cwd, adapter, concurrency, ...models, watchdog: { hard_ms: timeoutMs }, signal: controller.signal });
       return { code: report.status === "completed" && Object.keys(report.failures).length === 0 ? 0 : 1, out: JSON.stringify(report, null, 2) };
@@ -777,6 +796,12 @@ async function cmdCodex(cwd: string, args: ParsedArgs): Promise<CliResult> {
 
 const USAGE = `clockwork <command>
 
+  --providers-config PATH       absolute host JSON config for API models
+  Model IDs: provider::model (zai, qwen, deepseek, kimi, custom). Plain IDs use Codex.
+
+  claude chat --claude-bin PATH --prompt TEXT  managed Claude chat (optional --compact-at 600000 --keep-warm)
+  providers [models ID]         inspect enabled API providers / fetch model IDs
+  agent team|produce|verify      run Codex or configured API models
   init                          create .teamsmith/
   plan --goal TEXT --budget N   propose a goal-driven team; does not execute tasks
   event <type> [flags]          append a ledger event (--actor --unit --agent --data)
@@ -802,6 +827,7 @@ const USAGE = `clockwork <command>
   doctor                        environment and ledger self-check
 
 Model defaults for codex and ui --enable-execution:
+  --codex-compact-at N          optional host context threshold for Codex workers
   --planner-model ID            goal planning model (falls back to --model)
   --model ID                    fallback for both roles
   --producer-model ID           production default
@@ -864,6 +890,12 @@ export async function runCli(argv: string[], cwd: string): Promise<CliResult> {
         return await cmdLibrary(cwd, args);
       case "prompt":
         return await cmdPrompt(cwd, args);
+      case "claude":
+        if (args.positional.length !== 1 || args.positional[0] !== "chat") return fail(USAGE);
+        return await claudeChat(cwd, args.flags);
+      case "providers":
+        return await cmdProviders(args);
+      case "agent":
       case "codex":
         return await cmdCodex(cwd, args);
       case "doctor":

@@ -21,3 +21,8 @@ export {
   buildUnitPrompt,
   buildVerifierPrompt,
 } from "./spawn/translate.js";
+
+export { sessionPolicy, sessionEnv, IdlePolicy } from "./session/policy.js";
+export type { SessionPolicy } from "./session/policy.js";
+export { ManagedClaudeSession, usageSnapshot } from "./session/runtime.js";
+export type { SessionEvent, UsageSnapshot, QueryFactory } from "./session/runtime.js";

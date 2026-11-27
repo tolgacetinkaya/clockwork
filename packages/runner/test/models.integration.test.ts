@@ -1,3 +1,4 @@
+import { UnreconciledExecutionError } from "@clockwork/core";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -173,4 +174,20 @@ describe("programmatic model option validation before execution", () => {
     }
     expect(requests).toEqual([]);
   });
+});
+
+it("blocks recovery when an adapter cannot confirm external sandbox termination", async () => {
+  const { project } = await fixture();
+  const uncertain: ExecutionAdapter = {
+    id: "api-test",
+    async *execute() {
+      yield { type: "usage", input: 1, cached: 0, output: 1 } as ExecutionEvent;
+      throw new UnreconciledExecutionError("Sandbox cleanup unconfirmed");
+    },
+  };
+  const result = await runTeam({ project, adapter: uncertain, concurrency: 1 });
+  expect(result.status).toBe("stopped");
+  const ledger = await readLedger(join(project, ".teamsmith/ledger.jsonl"));
+  expect(ledger.events.find(e => e.type === "agent.error")?.data?.execution_unreconciled).toBe(true);
+  expect((await inspectTeamRecovery(project)).canResume).toBe(false);
 });

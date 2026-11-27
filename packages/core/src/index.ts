@@ -89,3 +89,7 @@ export { withStorageLock, atomicWrite, assertStorageFile } from "./storage/lock.
 export * from "./execution/planning.js";
 export { validatePlanningReceipt } from "./execution/planning-receipt.js";
 export type { PlanningReceipt } from "./execution/planning-receipt.js";
+
+export { executionReportSchema, parseExecutionReport } from "./execution/report.js";
+
+export { UnreconciledExecutionError } from "./execution/types.js";

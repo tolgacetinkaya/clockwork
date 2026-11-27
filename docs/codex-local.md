@@ -201,3 +201,16 @@ approved in the work unit's `allowed_test_changes`. Verification claims require
 matching successful CLI command receipts from that fresh verifier session. Unsupported
 or report-only evidence cannot certify acceptance. See [verification trust](verification-trust.md)
 for ownership, incomplete-work inventory, ignored-file limits and legacy receipt recovery.
+
+## Optional context compaction threshold
+
+Pass `--codex-compact-at 600000` to `plan`, `agent`/`codex`, or execution-enabled
+`ui` to set `model_auto_compact_token_limit` on each local Codex subprocess.
+Omit it to retain model defaults. Choose a value below the selected model's real
+context capacity; Clockwork does not expand that capacity or claim 600k is optimal.
+This is a host setting (1000..10000000 tokens), not an untrusted plan instruction.
+Production and independent review still use separate ephemeral conversations.
+No idle model calls are added to completed workers. API providers do not receive
+this Codex-specific option.
+
+Reference: [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference).

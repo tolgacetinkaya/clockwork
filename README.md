@@ -8,8 +8,10 @@ specification, tracks dependencies and budgets, and keeps an append-only event
 ledger for verification and session recovery.
 
 The core is platform-independent TypeScript. Execution integrations include the
-Claude Code plugin and an experimental local Codex CLI unit runner. Gemini and
-direct model API adapters are planned.
+Claude Code plugin, a local Codex CLI runner, and experimental API adapters for
+Z.ai / GLM, Qwen, DeepSeek, Kimi and custom Chat Completions services. Model IDs
+are open-ended. API tool execution uses isolated Linux Docker containers. See
+[API providers](docs/api-providers.md) for setup and capability requirements.
 
 ## Current status
 
@@ -180,3 +182,9 @@ details. Release preparation is described in [docs/releasing.md](docs/releasing.
 A transparent native desktop companion preview can run outside the browser with
 `npm run pet:desktop`. See [desktop companion](docs/desktop-companion.md) for
 setup, controls, security boundaries and platform validation.
+
+### Managed Claude chat
+
+Experimental opt-in context compaction and bounded idle messages are available via
+`clockwork claude chat`. See [Claude sessions](docs/claude-sessions.md) for usage,
+limits, resume behavior, and cache measurement caveats.

@@ -11,7 +11,8 @@
     "@clockwork/core": "*",
     "@clockwork/panel": "*",
     "@clockwork/runner": "*",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "@clockwork/adapter-api": "*"
   },
   "license": "MIT",
   "repository": {

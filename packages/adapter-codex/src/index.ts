@@ -14,73 +14,18 @@ import type {
 } from "@clockwork/core";
 import { planningProposalSchema, parsePlanningProposal } from "@clockwork/core";
 
-export const REPORT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["outcome", "summary", "evidence", "findings"],
-  properties: {
-    outcome: {
-      type: "string",
-      enum: ["completed", "accepted", "rework", "blocked"],
-    },
-    summary: { type: "string" },
-    evidence: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["criterion", "command", "result", "passed"],
-        properties: {
-          criterion: { type: "string" },
-          command: { type: "string" },
-          result: { type: "string" },
-          passed: { type: "boolean" },
-        },
-      },
-    },
-    findings: { type: "array", items: { type: "string" } },
-  },
-};
+export { executionReportSchema as REPORT_SCHEMA, parseExecutionReport as parseReport } from "@clockwork/core";
+import { executionReportSchema as REPORT_SCHEMA, parseExecutionReport as parseReport } from "@clockwork/core";
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-export function parseReport(text: string): ExecutionReport {
-  let r: unknown;
-  try {
-    r = JSON.parse(text);
-  } catch {
-    throw new Error("Codex returned invalid report JSON");
-  }
-  if (
-    !record(r) ||
-    !["completed", "accepted", "rework", "blocked"].includes(
-      String(r.outcome),
-    ) ||
-    typeof r.summary !== "string" ||
-    !r.summary.trim() ||
-    !Array.isArray(r.findings) ||
-    r.findings.some((f) => typeof f !== "string") ||
-    !Array.isArray(r.evidence) ||
-    r.evidence.some(
-      (e) =>
-        !record(e) ||
-        typeof e.criterion !== "string" ||
-        !e.criterion.trim() ||
-        typeof e.command !== "string" ||
-        !e.command.trim() ||
-        typeof e.result !== "string" ||
-        !e.result.trim() ||
-        typeof e.passed !== "boolean",
-    )
-  )
-    throw new Error("Codex returned an invalid execution report");
-  return r as unknown as ExecutionReport;
 }
 export function buildExecArgs(
   request: ExecutionRequest,
   schema: string,
   windowsSandbox?: "elevated" | "unelevated" | "mxc",
+  autoCompactTokenLimit?: number,
 ): string[] {
+  validateCompactLimit(autoCompactTokenLimit);
   return [
     "exec",
     "--json",
@@ -97,6 +42,7 @@ export function buildExecArgs(
     "-c",
     "features.multi_agent=false",
     ...(windowsSandbox ? ["-c", `windows.sandbox="${windowsSandbox}"`] : []),
+    ...(autoCompactTokenLimit === undefined ? [] : ["-c", `model_auto_compact_token_limit=${autoCompactTokenLimit}`]),
     "--output-schema",
     schema,
     "--cd",
@@ -258,7 +204,12 @@ export class CodexPlanningDecoder extends StructuredCodexDecoder<PlanningProposa
     });
   }
 }
+function validateCompactLimit(value: number | undefined): void {
+  if (value !== undefined && (!Number.isSafeInteger(value) || value < 1000 || value > 10000000)) throw new Error("codex-compact-at must be an integer from 1000 to 10000000; choose a threshold below your model capacity");
+}
 export interface CodexOptions {
+  /** Host-selected threshold; omitted retains model defaults. Never changes model capacity. */
+  autoCompactTokenLimit?: number;
   executable?: string;
   timeoutMs?: number;
   /** Transport liveness only; never evidence of work progress. */
@@ -267,7 +218,7 @@ export interface CodexOptions {
 }
 export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
   readonly id = "codex";
-  constructor(private readonly options: CodexOptions = {}) {}
+  constructor(private readonly options: CodexOptions = {}) { validateCompactLimit(options.autoCompactTokenLimit); }
   async *execute(request: ExecutionRequest): AsyncGenerator<ExecutionEvent> {
     for await (const event of this.structured(request, REPORT_SCHEMA, new CodexDecoder())) {
       if (event.type === "structured") yield { type: "report", report: event.value };
@@ -308,7 +259,7 @@ export class CodexAdapter implements ExecutionAdapter, PlanningAdapter {
       child = spawn(
         this.options.executable ??
           (process.platform === "win32" ? "codex.exe" : "codex"),
-        buildExecArgs(request, schema, this.options.windowsSandbox),
+        buildExecArgs(request, schema, this.options.windowsSandbox, this.options.autoCompactTokenLimit),
         {
           cwd: request.workspace,
           shell: false,

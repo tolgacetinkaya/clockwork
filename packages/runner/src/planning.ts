@@ -52,7 +52,7 @@ export async function generateGoalPlan(options: GenerateGoalPlanOptions): Promis
     const abort = () => controller.abort(options.signal?.reason);
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();
-    const receipt: PlanningReceipt = { version: 1, id: randomUUID(), status: "running", head, workspace, provider: options.adapter.id, ...(options.model ? { model: options.model } : {}), usageUnknown: true, unreconciled: true };
+    const receipt: PlanningReceipt = { version: 1, id: randomUUID(), status: "running", head, workspace, provider: options.adapter.providerForModel?.(options.model) ?? options.adapter.id, ...(options.model ? { model: options.model } : {}), usageUnknown: true, unreconciled: true };
     const save = () => atomicWrite(join(options.project, ".teamsmith/planning.json"), JSON.stringify(receipt));
     try {
       await git(options.project, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", workspace, head); linked = true;
@@ -89,7 +89,7 @@ export async function generateGoalPlan(options: GenerateGoalPlanOptions): Promis
       await assertCanPlan(options.project, true);
       const plan = validatePlanningProposal(proposal, input);
       receipt.status = "completed"; receipt.unreconciled = false; await save();
-      return { ...plan, usage, provider: options.adapter.id, ...(options.model ? { model: options.model } : {}), head };
+      return { ...plan, usage, provider: options.adapter.providerForModel?.(options.model) ?? options.adapter.id, ...(options.model ? { model: options.model } : {}), head };
     } catch (error) {
       receipt.status = "error"; receipt.unreconciled = error instanceof WatchdogError ? error.unreconciled : !closed && linked;
       receipt.error = error instanceof Error ? error.message : "Planning failed";

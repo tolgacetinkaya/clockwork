@@ -1,0 +1,12 @@
+{
+  "name": "@clockwork/adapter-api",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@clockwork/core": "*"
+  },
+  "license": "MIT"
+}

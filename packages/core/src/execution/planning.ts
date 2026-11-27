@@ -30,6 +30,7 @@ export interface PlanningRequest {
 }
 export type PlanningEvent = Exclude<ExecutionEvent, { type: "report" }> | { type: "plan"; proposal: PlanningProposal };
 export interface PlanningAdapter {
+  providerForModel?(model?: string): string;
   readonly id: string;
   plan(request: PlanningRequest): AsyncIterable<PlanningEvent>;
 }

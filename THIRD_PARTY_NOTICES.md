@@ -16,3 +16,7 @@ The panel uses Motion for React for state, gesture and character animation.
 Motion and its runtime dependencies retain their MIT license notices, bundled
 in `packages/panel/client/public/assets/motion-licenses.txt` and served at
 `/assets/motion-licenses.txt`.
+
+Managed Claude chat uses the official `@anthropic-ai/claude-agent-sdk`. That package
+and Claude Code retain their own upstream license and service terms; the Clockwork
+MIT license does not relicense them. See the installed SDK README and license files.

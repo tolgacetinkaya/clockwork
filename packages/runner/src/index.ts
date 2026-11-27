@@ -1,3 +1,4 @@
+import { UnreconciledExecutionError } from "@clockwork/core";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
@@ -238,7 +239,8 @@ async function executeUnit(options: RunUnitOptions): Promise<ExecutionReport> {
     }
     const execution = randomUUID();
     const role = spec.assignment[unitId]!;
-    const agent = `${role}-${adapter.id}-${mode}-${execution.slice(0, 8)}`;
+    const provider = adapter.providerForModel?.(model) ?? adapter.id;
+    const agent = `${role}-${provider}-${mode}-${execution.slice(0, 8)}`;
     const writer = await LedgerWriter.open(
       join(project, ".teamsmith/ledger.jsonl"),
     );
@@ -247,7 +249,7 @@ async function executeUnit(options: RunUnitOptions): Promise<ExecutionReport> {
       data?: Record<string, unknown>,
     ) => writer.append(type, { unit_id: unitId, agent_id: agent, data });
     const data = {
-      provider: adapter.id,
+      provider,
       execution,
       mode,
       watchdog,
@@ -468,7 +470,7 @@ and passed boolean. Missing evidence is not success. Do not put credentials into
         ...data,
         thread_id: threadId,
         usage_unknown: !usageRecorded,
-        execution_unreconciled: error instanceof WatchdogError && error.unreconciled,
+        execution_unreconciled: error instanceof UnreconciledExecutionError || (error instanceof WatchdogError && error.unreconciled),
         reason: error instanceof Error ? error.message : "Execution failed",
       });
       const failedState = reduceLedger(
@@ -722,7 +724,7 @@ async function verifyIntegration(options: RunTeamOptions, spec: Spec, workspace:
   if (before.files.length) throw new Error("Integration verification requires a clean worktree");
   const writer = await LedgerWriter.open(join(options.project, ".teamsmith/ledger.jsonl"));
   const execution = randomUUID();
-  const data = { execution, watchdog, provider: options.adapter.id, mode: "integration_verify", execution_models: executionModels, ...(model !== undefined ? { model, requested_model: model } : {}) };
+  const data = { execution, watchdog, provider: options.adapter.providerForModel?.(model) ?? options.adapter.id, mode: "integration_verify", execution_models: executionModels, ...(model !== undefined ? { model, requested_model: model } : {}) };
   const agent_id = `integration-${execution}`;
   const append = (type: Parameters<typeof writer.append>[0], extra: Record<string, unknown> = {}) => writer.append(type, { agent_id, data: { ...data, ...extra } });
   const controller = new AbortController();
@@ -793,7 +795,7 @@ async function verifyIntegration(options: RunTeamOptions, spec: Spec, workspace:
     else verdict = { status: "passed", report };
     await delivery.acknowledge(report.outcome);
   } catch (error) {
-    if (!terminalRecorded) await append("agent.error", { usage_unknown: !usageRecorded, execution_unreconciled: error instanceof WatchdogError && error.unreconciled, reason: error instanceof Error ? error.message : "Integration verification failed" });
+    if (!terminalRecorded) await append("agent.error", { usage_unknown: !usageRecorded, execution_unreconciled: error instanceof UnreconciledExecutionError || (error instanceof WatchdogError && error.unreconciled), reason: error instanceof Error ? error.message : "Integration verification failed" });
     await delivery.acknowledge("rejected");
     throw error;
   } finally {

@@ -31,6 +31,15 @@ export interface ExecutionRequest {
   signal: AbortSignal;
 }
 export interface ExecutionAdapter {
+  providerForModel?(model?: string): string;
   readonly id: string;
   execute(request: ExecutionRequest): AsyncIterable<ExecutionEvent>;
+}
+
+/** The adapter could not prove that its external worker stopped. */
+export class UnreconciledExecutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnreconciledExecutionError";
+  }
 }
